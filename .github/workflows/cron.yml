@@ -1,0 +1,24 @@
+name: Run All Scripts
+
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: python dataSelector/run.py
+      - run: python hoolSelector/process.py
+      - run: python Recommendation/feature_extractor.py
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          SAAVN_API_URL: ${{ secrets.SAAVN_API_URL }}
