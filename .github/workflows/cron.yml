@@ -1,24 +1,44 @@
 name: Run All Scripts
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # manual trigger
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # 1️⃣ Checkout the repository
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # 2️⃣ Setup Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - run: pip install -r requirements.txt
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-      - run: python dataSelector/run.py
-      - run: python hoolSelector/process.py
-      - run: python Recommendation/feature_extractor.py
+      # 4️⃣ Run run.py
+      - name: Run run.py
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
           SAAVN_API_URL: ${{ secrets.SAAVN_API_URL }}
+        run: python dataSelector/run.py
+
+      # 5️⃣ Run process.py
+      - name: Run process.py
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          SAAVN_API_URL: ${{ secrets.SAAVN_API_URL }}
+        run: python hoolSelector/process.py
+
+      # 6️⃣ Run feature_extractor.py
+      - name: Run feature_extractor.py
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          SAAVN_API_URL: ${{ secrets.SAAVN_API_URL }}
+        run: python Recommendation/feature_extractor.py
