@@ -1,0 +1,45 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables / secrets
+.env
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor settings
+.vscode/
+.idea/
+
+# Temporary audio files (librosa / downloads)
+*.wav
+*.mp3
+*.mp4
+*.aac
+*.ogg
+*.flac
+tmp/
+temp/
+
+# FAISS / ML generated files (if any)
+*.index
+song_vectors.pkl
+
+# Jupyter (if used)
+.ipynb_checkpoints/
+
+# Render / build artifacts
+build/
+dist/

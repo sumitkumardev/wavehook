@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WaveHook</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      color: white;
+      font-family: sans-serif;
+      overflow: hidden;
+    }
+
+    #viewport {
+      height: 100vh;
+      width: 100%;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #card {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      transform: translateY(0);
+      transition: transform 0.35s ease-out;
+      will-change: transform;
+    }
+
+    img {
+      width: 250px;
+      border-radius: 10px;
+    }
+
+    h2 {
+      padding: 10px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<div id="viewport">
+  <div id="card">
+    <h2 id="title">Loading...</h2>
+    <img id="cover">
+    <br><br>
+    <audio id="player" controls></audio>
+  </div>
+</div>
+
+<script>
+let startTime = 0;
+let offsetY = 0;
+let scrolling = false;
+let lastScroll = 0;
+
+const card = document.getElementById("card");
+const audio = document.getElementById("player");
+
+async function loadSong(action="skip") {
+  const res = await fetch(`/next_song?action=${action}`);
+  const song = await res.json();
+
+  document.getElementById("title").innerText = song.name;
+  document.getElementById("cover").src = song.image[2].url;
+  audio.src = song.downloadUrl[4].url;
+
+  let hook = song.hook?.primehook || "00:00";
+  let [m, s] = hook.split(":");
+  let seconds = parseInt(m)*60 + parseInt(s);
+
+  audio.currentTime = seconds;
+  audio.play().catch(()=>alert("Tap once to allow audio"));
+
+  startTime = Date.now();
+}
+
+function decideAction(){
+  let listened = (Date.now() - startTime) / 1000;
+  return listened > 12 ? "liked" : "skipped";
+}
+
+function snapNext(){
+  if(scrolling) return;
+  scrolling = true;
+
+  let action = decideAction();
+
+  card.style.transition = "transform 0.35s ease-out";
+  card.style.transform = "translateY(-100%)";
+
+  setTimeout(async () => {
+    await loadSong(action);
+
+    card.style.transition = "none";
+    card.style.transform = "translateY(100%)";
+
+    requestAnimationFrame(() => {
+      card.style.transition = "transform 0.35s ease-out";
+      card.style.transform = "translateY(0)";
+      scrolling = false;
+    });
+  }, 350);
+}
+
+/* WHEEL SCROLL */
+document.addEventListener("wheel", e => {
+  if(scrolling) return;
+
+  offsetY -= e.deltaY * 0.5; // scroll sensitivity
+  card.style.transition = "none";
+  card.style.transform = `translateY(${offsetY}px)`;
+
+  // trigger next when scrolled enough
+  if(offsetY < -window.innerHeight * 0.25){
+    offsetY = 0;
+    snapNext();
+  }
+});
+
+/* TOUCH SWIPE */
+let startY = 0;
+
+card.addEventListener("touchstart", e => {
+  startY = e.touches[0].clientY;
+});
+
+card.addEventListener("touchmove", e => {
+  let moveY = e.touches[0].clientY;
+  offsetY = moveY - startY;
+  card.style.transition = "none";
+  card.style.transform = `translateY(${offsetY}px)`;
+});
+
+card.addEventListener("touchend", () => {
+  if(offsetY < -window.innerHeight * 0.25){
+    offsetY = 0;
+    snapNext();
+  } else {
+    card.style.transition = "transform 0.2s ease-out";
+    card.style.transform = "translateY(0)";
+    offsetY = 0;
+  }
+});
+
+/* FIRST LOAD */
+loadSong();
+</script>
+
+</body>
+</html>
