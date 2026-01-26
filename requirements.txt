@@ -6,3 +6,4 @@ numpy
 pymongo
 requests
 soundfile
+pandas
