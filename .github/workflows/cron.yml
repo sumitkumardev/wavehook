@@ -1,19 +1,41 @@
+name: Run All Scripts
+
+# Only manual trigger, no schedule
+on:
+  workflow_dispatch:   # allows you to run it manually from GitHub UI
+
 jobs:
-  run:
+  run-scripts:
     runs-on: ubuntu-latest
+
+    # ✅ Job-level env: secrets available to all steps
     env:
       SAAVN_API_URL: ${{ secrets.SAAVN_API_URL }}
       MONGO_URI: ${{ secrets.MONGO_URI }}
 
     steps:
-      - uses: actions/checkout@v4
+      # 1️⃣ Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      # 2️⃣ Setup Python
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - run: pip install -r requirements.txt
+      # 3️⃣ Install dependencies
+      - name: Install dependencies
+        run: pip install --upgrade pip && pip install -r requirements.txt
 
-      - run: python dataSelector/run.py
-      - run: python hookSelector/process.py
-      - run: python Recommendation/feature_extractor.py
+      # 4️⃣ Run run.py
+      - name: Run dataSelector/run.py
+        run: python dataSelector/run.py
+
+      # 5️⃣ Run process.py
+      - name: Run hookSelector/process.py
+        run: python hookSelector/process.py
+
+      # 6️⃣ Run feature_extractor.py
+      - name: Run Recommendation/feature_extractor.py
+        run: python Recommendation/feature_extractor.py
