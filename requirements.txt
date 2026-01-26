@@ -9,3 +9,4 @@ soundfile
 pandas
 scikit-learn
 scipy
+faiss-cpu
