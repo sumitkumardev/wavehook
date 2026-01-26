@@ -2,6 +2,7 @@
 <html>
 <head>
   <title>WaveHook</title>
+  <meta name="theme-color" content="#333333">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
@@ -56,17 +57,68 @@
 let startTime = 0;
 let offsetY = 0;
 let scrolling = false;
-let lastScroll = 0;
 
 const card = document.getElementById("card");
 const audio = document.getElementById("player");
+
+const CACHE_KEY = "played_songs_cache";
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+/* ---------------- CACHE FUNCTIONS ---------------- */
+
+function getCache(){
+  let data = localStorage.getItem(CACHE_KEY);
+  return data ? JSON.parse(data) : {};
+}
+
+function saveCache(cache){
+  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+}
+
+function cleanCache(){
+  let cache = getCache();
+  let now = Date.now();
+
+  for(let id in cache){
+    if(now - cache[id] > CACHE_TTL){
+      delete cache[id];
+    }
+  }
+  saveCache(cache);
+}
+
+function isInCache(songId){
+  cleanCache();
+  let cache = getCache();
+  return songId in cache;
+}
+
+function markInCache(songId){
+  let cache = getCache();
+  cache[songId] = Date.now();
+  saveCache(cache);
+}
+
+/* ---------------- SONG LOADER ---------------- */
 
 async function loadSong(action="skip") {
   const res = await fetch(`/next_song?action=${action}`);
   const song = await res.json();
 
+  // 🔥 NEW: if already seen, auto skip
+  // if(isInCache(song.id)){
+  //   console.log("Already played, skipping:", song.id);
+  //   return loadSong("skipped");
+  // }
+  // new
+  if(isInCache(song.id)){
+  console.log("Already played, skipping (cache):", song.id);
+  return loadSong("liked"); // <-- important change
+  }
+
   document.getElementById("title").innerText = song.name;
   document.getElementById("cover").src = song.image[2].url;
+
   audio.src = song.downloadUrl[4].url;
 
   let hook = song.hook?.primehook || "00:00";
@@ -77,7 +129,12 @@ async function loadSong(action="skip") {
   audio.play().catch(()=>alert("Tap once to allow audio"));
 
   startTime = Date.now();
+
+  // mark as shown immediately
+  markInCache(song.id);
 }
+
+/* ---------------- DECISION ---------------- */
 
 function decideAction(){
   let listened = (Date.now() - startTime) / 1000;
@@ -104,25 +161,27 @@ function snapNext(){
       card.style.transform = "translateY(0)";
       scrolling = false;
     });
+
   }, 350);
 }
 
-/* WHEEL SCROLL */
+/* ---------------- WHEEL SCROLL ---------------- */
+
 document.addEventListener("wheel", e => {
   if(scrolling) return;
 
-  offsetY -= e.deltaY * 0.5; // scroll sensitivity
+  offsetY -= e.deltaY * 0.5;
   card.style.transition = "none";
   card.style.transform = `translateY(${offsetY}px)`;
 
-  // trigger next when scrolled enough
   if(offsetY < -window.innerHeight * 0.25){
     offsetY = 0;
     snapNext();
   }
 });
 
-/* TOUCH SWIPE */
+/* ---------------- TOUCH SWIPE ---------------- */
+
 let startY = 0;
 
 card.addEventListener("touchstart", e => {
@@ -147,7 +206,8 @@ card.addEventListener("touchend", () => {
   }
 });
 
-/* FIRST LOAD */
+/* ---------------- FIRST LOAD ---------------- */
+cleanCache();
 loadSong();
 </script>
 

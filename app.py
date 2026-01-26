@@ -18,30 +18,23 @@ vec_col = db.song_vectors
 # }
 
 # new
-CACHE_TTL = 60 * 60 * 24  # 1 day (seconds)
+CACHE_TTL = 60 * 60 * 24  # 1 day
 
 SESSION = {
-    "last_song": None,
-    "played_cache": {}  # song_id: timestamp
+    "primary_song": None,     # current primary song id
+    "in_chain": False,        # are we in recommendation chain?
+    "played_cache": {}        # song_id: timestamp
 }
 
 
-def get_primary_song():
-    # trending / random
-    song = songs_col.find().sort("playCount", -1).limit(50)
-    song = random.choice(list(song))
-    return song
+# ---------------- CACHE ----------------
 
 def is_recently_played(song_id):
     now = time.time()
-
-    # remove expired entries
     expired = [k for k, v in SESSION["played_cache"].items()
                if now - v > CACHE_TTL]
-
     for k in expired:
         del SESSION["played_cache"][k]
-
     return song_id in SESSION["played_cache"]
 
 
@@ -49,23 +42,36 @@ def mark_played(song_id):
     SESSION["played_cache"][song_id] = time.time()
 
 
+# ---------------- PRIMARY PICK ----------------
 
-def get_recommended_song(base_song_id):
-    rec = rec_col.find_one({"song_id": base_song_id})
-    if rec:
-        for r in rec["recommended"]:
-            sid = r["song_id"]
+def get_primary_song():
+    # true random song
+    song = list(songs_col.aggregate([{"$sample": {"size": 1}}]))[0]
+    return song
 
-            # 🔥 NEW: skip recently played
-            if is_recently_played(sid):
-                continue
 
-            song = songs_col.find_one({"id": sid})
-            if song:
-                return song
+# ---------------- RECOMMENDED PICK ----------------
+
+def get_recommended_from_primary(primary_id):
+    rec = rec_col.find_one({"song_id": primary_id})
+    if not rec:
+        return None
+
+    for r in rec["recommended"]:
+        sid = r["song_id"]
+
+        # skip already played (server cache)
+        if is_recently_played(sid):
+            continue
+
+        song = songs_col.find_one({"id": sid})
+        if song:
+            return song
+
     return None
 
 
+# ---------------- ROUTES ----------------
 
 @app.route("/")
 def home():
@@ -74,18 +80,41 @@ def home():
 
 @app.route("/next_song")
 def next_song():
-    action = request.args.get("action")  # liked or skipped
+    action = request.args.get("action")  # liked / skipped
 
-    if SESSION["last_song"] and action == "liked":
-        song = get_recommended_song(SESSION["last_song"])
-        if not song:
-            song = get_primary_song()
-    else:
+    # ================= FIRST SONG =================
+    if SESSION["primary_song"] is None:
         song = get_primary_song()
+        SESSION["primary_song"] = song["id"]
+        SESSION["in_chain"] = False
 
-    SESSION["last_song"] = song["id"]
+    # ================= USER LIKED =================
+    elif action == "liked":
+        if not SESSION["in_chain"]:
+            # start chain from primary
+            song = get_recommended_from_primary(SESSION["primary_song"])
+            if song:
+                SESSION["in_chain"] = True
+            else:
+                song = get_primary_song()
+                SESSION["primary_song"] = song["id"]
+                SESSION["in_chain"] = False
+        else:
+            # continue inside chain
+            song = get_recommended_from_primary(SESSION["primary_song"])
+            if not song:
+                song = get_primary_song()
+                SESSION["primary_song"] = song["id"]
+                SESSION["in_chain"] = False
 
-    # 🔥 NEW: mark as played
+    # ================= USER SKIPPED =================
+    else:
+        # break chain and go new primary
+        song = get_primary_song()
+        SESSION["primary_song"] = song["id"]
+        SESSION["in_chain"] = False
+
+    # ---------------- CACHE MARK ----------------
     mark_played(song["id"])
 
     return jsonify(song)
