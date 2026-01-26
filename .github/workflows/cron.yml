@@ -2,8 +2,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     env:
-      MONGO_URI: ${{ secrets.MONGO_URI }}
       SAAVN_API_URL: ${{ secrets.SAAVN_API_URL }}
+      MONGO_URI: ${{ secrets.MONGO_URI }}
 
     steps:
       - uses: actions/checkout@v4
@@ -15,5 +15,5 @@ jobs:
       - run: pip install -r requirements.txt
 
       - run: python dataSelector/run.py
-      - run: python hoolSelector/process.py
+      - run: python hookSelector/process.py
       - run: python Recommendation/feature_extractor.py
