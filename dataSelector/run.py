@@ -5,7 +5,9 @@ import json
 import os
 from pymongo import MongoClient
 
-BASE_URL = os.environ["SAAVN_API_URL"]
+BASE_URL = os.environ.get("SAAVN_API_URL")
+if BASE_URL is None:
+    raise RuntimeError("SAAVN_API_URL environment variable not set")
 
 PLAYLIST_FILE = "playlists.json"
 
