@@ -1,8 +1,6 @@
 # process the songs after run.py which generate the hooks
 
-import requests
-import tempfile
-import os
+import requests, tempfile, os, traceback
 from pymongo import MongoClient
 
 from analyzer import analyze_audio
@@ -76,7 +74,9 @@ def process_song(song):
         print(f"✅ Hook stored → {song['_id']}")
 
     except Exception as e:
-        print(f"❌ Error ({song['_id']}): {e}")
+        # print(f"❌ Error ({song['_id']}): {e}")
+            print(f"❌ Error ({song['_id']}): {repr(e)}")
+            traceback.print_exc()
 
     finally:
         if audio_path and os.path.exists(audio_path):

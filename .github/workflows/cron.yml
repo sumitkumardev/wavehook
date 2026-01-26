@@ -1,41 +1,39 @@
 name: Run All Scripts
 
-# Only manual trigger, no schedule
 on:
-  workflow_dispatch:   # allows you to run it manually from GitHub UI
+  workflow_dispatch:
 
 jobs:
   run-scripts:
     runs-on: ubuntu-latest
 
-    # ✅ Job-level env: secrets available to all steps
     env:
       SAAVN_API_URL: ${{ secrets.SAAVN_API_URL }}
       MONGO_URI: ${{ secrets.MONGO_URI }}
 
     steps:
-      # 1️⃣ Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2️⃣ Setup Python
       - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # 3️⃣ Install dependencies
+      # ✅ NEW STEP: install ffmpeg (system dependency)
+      - name: Install ffmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
       - name: Install dependencies
         run: pip install --upgrade pip && pip install -r requirements.txt
 
-      # 4️⃣ Run run.py
       - name: Run dataSelector/run.py
         run: python dataSelector/run.py
 
-      # 5️⃣ Run process.py
       - name: Run hookSelector/process.py
         run: python hookSelector/process.py
 
-      # 6️⃣ Run feature_extractor.py
       - name: Run Recommendation/feature_extractor.py
         run: python Recommendation/feature_extractor.py
