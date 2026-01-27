@@ -75,7 +75,7 @@ def get_recommended_from_primary(primary_id):
 
 @app.route("/")
 def home():
-    return jsonify({"status": "WaveHook running"})
+    return render_template("index.html")
 
 
 @app.route("/next_song")
