@@ -1,12 +1,4 @@
 flask
 pymongo
 dnspython
-librosa
-numpy
-pymongo
 requests
-soundfile
-pandas
-scikit-learn
-scipy
-faiss-cpu

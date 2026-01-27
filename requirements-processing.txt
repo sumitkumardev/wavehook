@@ -1,0 +1,7 @@
+librosa
+numpy
+scipy
+scikit-learn
+faiss-cpu
+soundfile
+pandas
