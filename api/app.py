@@ -75,7 +75,7 @@ def get_recommended_from_primary(primary_id):
 
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return jsonify({"status": "WaveHook running"})
 
 
 @app.route("/next_song")
@@ -91,7 +91,6 @@ def next_song():
     # ================= USER LIKED =================
     elif action == "liked":
         if not SESSION["in_chain"]:
-            # start chain from primary
             song = get_recommended_from_primary(SESSION["primary_song"])
             if song:
                 SESSION["in_chain"] = True
@@ -100,7 +99,6 @@ def next_song():
                 SESSION["primary_song"] = song["id"]
                 SESSION["in_chain"] = False
         else:
-            # continue inside chain
             song = get_recommended_from_primary(SESSION["primary_song"])
             if not song:
                 song = get_primary_song()
@@ -109,16 +107,9 @@ def next_song():
 
     # ================= USER SKIPPED =================
     else:
-        # break chain and go new primary
         song = get_primary_song()
         SESSION["primary_song"] = song["id"]
         SESSION["in_chain"] = False
 
-    # ---------------- CACHE MARK ----------------
     mark_played(song["id"])
-
     return jsonify(song)
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
