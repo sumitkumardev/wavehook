@@ -49,7 +49,7 @@
     <h2 id="title">Loading...</h2>
     <img id="cover">
     <br><br>
-    <audio id="player" controls></audio>
+    <audio id="player" controls preload="metadata"></audio>
   </div>
 </div>
 
@@ -119,14 +119,30 @@ async function loadSong(action="skip") {
   document.getElementById("title").innerText = song.name;
   document.getElementById("cover").src = song.image[2].url;
 
+  // audio.src = song.downloadUrl[4].url;
+
+  // let hook = song.hook?.primehook || "00:00";
+  // let [m, s] = hook.split(":");
+  // let seconds = parseInt(m)*60 + parseInt(s);
+
+  // audio.currentTime = seconds;
+  // audio.play().catch(()=>alert("Tap once to allow audio"));
+
+  // new
+  audio.pause();
   audio.src = song.downloadUrl[4].url;
+  audio.preload = "metadata";
 
   let hook = song.hook?.primehook || "00:00";
   let [m, s] = hook.split(":");
   let seconds = parseInt(m)*60 + parseInt(s);
 
-  audio.currentTime = seconds;
-  audio.play().catch(()=>alert("Tap once to allow audio"));
+  audio.onloadedmetadata = () => {
+    audio.currentTime = seconds;   // seek only after metadata
+    audio.play().catch(()=>alert("Tap once to allow audio"));
+  };
+
+
 
   startTime = Date.now();
 
