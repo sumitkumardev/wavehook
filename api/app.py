@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request, render_template
 from pymongo import MongoClient
 import random, time, os
-from recommend import recommend
+from .recommend import recommend
 
 app = Flask(__name__)
 
