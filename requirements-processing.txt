@@ -5,3 +5,4 @@ scikit-learn
 faiss-cpu
 soundfile
 pandas
+pymongo
