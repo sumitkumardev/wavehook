@@ -1,6 +1,5 @@
 import os
 import numpy as np
-import faiss
 from pymongo import MongoClient
 
 # -----------------------------
@@ -27,22 +26,19 @@ def load_song_vectors():
     if not vectors:
         raise RuntimeError("No vectors found in song_vectors collection")
 
-    vectors = np.array(vectors).astype("float32")
+    vectors = np.array(vectors, dtype="float32")
     return vectors, song_ids
 
 # -----------------------------
-# Build FAISS index
+# Cosine similarity
 # -----------------------------
-def build_faiss_index(vectors):
-    dim = vectors.shape[1]
+def cosine_similarity_matrix(vectors, query_vector):
+    # Normalize
+    vectors_norm = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
+    query_norm = query_vector / np.linalg.norm(query_vector)
 
-    # Normalize for cosine similarity
-    faiss.normalize_L2(vectors)
-
-    index = faiss.IndexFlatIP(dim)  # cosine similarity
-    index.add(vectors)
-
-    return index
+    # Cosine similarity = dot product of normalized vectors
+    return np.dot(vectors_norm, query_norm)
 
 # -----------------------------
 # Recommend similar songs
@@ -53,16 +49,17 @@ def recommend(song_id, k=5):
     if song_id not in song_ids:
         raise ValueError(f"Song ID {song_id} not found in song_vectors")
 
-    index = build_faiss_index(vectors)
-
     query_idx = song_ids.index(song_id)
-    query_vector = vectors[query_idx].reshape(1, -1)
+    query_vector = vectors[query_idx]
 
-    distances, indices = index.search(query_vector, k + 1)
+    similarities = cosine_similarity_matrix(vectors, query_vector)
+
+    # Get indices sorted by similarity (descending)
+    sorted_indices = np.argsort(similarities)[::-1]
 
     recommendations = []
 
-    for i, idx in enumerate(indices[0]):
+    for idx in sorted_indices:
         rec_id = song_ids[idx]
 
         if rec_id == song_id:
@@ -70,7 +67,7 @@ def recommend(song_id, k=5):
 
         recommendations.append({
             "song_id": rec_id,
-            "similarity": float(distances[0][i])
+            "similarity": float(similarities[idx])
         })
 
         if len(recommendations) >= k:
