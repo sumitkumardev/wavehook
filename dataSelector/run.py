@@ -81,8 +81,32 @@ def save_songs_to_mongodb():
     print("✅ All songs saved into MongoDB")
 
 # ---------------------------------------
-if __name__ == "__main__":
-    LANGUAGE = "new-releases"
 
-    save_playlist_ids(LANGUAGE)
-    save_songs_to_mongodb()
+# ---------------------------------------
+def get_language_queries_from_db():
+    query_collection = db["language_query"]
+
+    doc = query_collection.find_one()
+    if not doc:
+        return []
+
+    combined = []
+
+    for key in ["language", "querry", "artist", "year"]:
+        values = doc.get(key, [])
+        if isinstance(values, list):
+            for v in values:
+                if v:   # skip empty / null
+                    combined.append(str(v))
+
+    return combined
+# ---------------------------------------
+
+
+if __name__ == "__main__":
+    language_list = get_language_queries_from_db()
+
+    for LANGUAGE in language_list:
+        print(f"\n Processing → {LANGUAGE}")
+        save_playlist_ids(LANGUAGE)
+        save_songs_to_mongodb()
