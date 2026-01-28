@@ -57,12 +57,13 @@
     }
 
     button {
-      margin-top: 20px;
+      margin-top: 12px;
       padding: 10px 20px;
       border-radius: 8px;
       border: none;
       background: #1db954;
       font-size: 16px;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -90,6 +91,8 @@
     <img id="cover">
     <br><br>
     <audio id="player" controls preload="metadata"></audio>
+    <br>
+    <button id="nextHookBtn" onclick="playNextHook()">⏭ Next Hook</button>
   </div>
 
 </div>
@@ -105,6 +108,64 @@ const audio = document.getElementById("player");
 const CACHE_KEY = "played_songs_cache";
 const LANG_KEY = "language_score";
 const LANG_INIT = "language_initialized";
+
+/* ---------- HOOK CONTROL ---------- */
+let hooks = [];
+let currentHookIndex = 0;
+
+function parseTime(t){
+  if(!t) return 0;
+  let [m, s] = t.split(":");
+  return parseInt(m) * 60 + parseInt(s);
+}
+
+function extractHooks(song){
+  let list = [];
+
+  if(song.hook?.primehook) list.push(song.hook.primehook);
+  if(song.hook?.sechook)   list.push(song.hook.sechook);
+  if(song.hook?.subhook)   list.push(song.hook.subhook);
+
+  if(list.length === 0) return ["00:00"];
+  return list;
+}
+
+function crossfadeTo(seconds){
+  const step = 0.05;
+  let vol = audio.volume || 1;
+
+  let fadeOut = setInterval(() => {
+    vol -= step;
+    if(vol <= 0){
+      vol = 0;
+      clearInterval(fadeOut);
+
+      audio.currentTime = seconds;
+
+      let fadeIn = setInterval(() => {
+        vol += step;
+        if(vol >= 1){
+          vol = 1;
+          clearInterval(fadeIn);
+        }
+        audio.volume = vol;
+      }, 30);
+    }
+    audio.volume = vol;
+  }, 30);
+}
+
+function playNextHook(){
+  if(!hooks.length) return;
+
+  currentHookIndex++;
+  if(currentHookIndex >= hooks.length){
+    currentHookIndex = 0;
+  }
+
+  let sec = parseTime(hooks[currentHookIndex]);
+  crossfadeTo(sec);
+}
 
 /* ---------- LANGUAGE STORAGE ---------- */
 
@@ -199,12 +260,14 @@ async function loadSong(action="skip"){
   audio.src = song.downloadUrl[4].url;
   audio.preload = "metadata";
 
-  let hook = song.hook?.primehook || "00:00";
-  let [m,s] = hook.split(":");
-  let seconds = parseInt(m)*60 + parseInt(s);
+  hooks = extractHooks(song);
+  currentHookIndex = 0;
+
+  let seconds = parseTime(hooks[0]);
 
   audio.onloadedmetadata = () => {
     audio.currentTime = seconds;
+    audio.volume = 1;
     audio.play();
   };
 
@@ -255,6 +318,31 @@ document.addEventListener("wheel", e=>{
     snapNext();
   }
 });
+
+let startY = 0;
+
+card.addEventListener("touchstart", e => {
+  startY = e.touches[0].clientY;
+});
+
+card.addEventListener("touchmove", e => {
+  let moveY = e.touches[0].clientY;
+  offsetY = moveY - startY;
+  card.style.transition = "none";
+  card.style.transform = `translateY(${offsetY}px)`;
+});
+
+card.addEventListener("touchend", () => {
+  if(offsetY < -window.innerHeight * 0.25){
+    offsetY = 0;
+    snapNext();
+  } else {
+    card.style.transition = "transform 0.2s ease-out";
+    card.style.transform = "translateY(0)";
+    offsetY = 0;
+  }
+});
+
 
 checkFirstTime();
 </script>
