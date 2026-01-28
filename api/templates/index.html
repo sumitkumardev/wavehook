@@ -26,9 +26,7 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      transform: translateY(0);
       transition: transform 0.35s ease-out;
-      will-change: transform;
     }
 
     img {
@@ -40,191 +38,287 @@
       padding: 10px;
       text-align: center;
     }
+
+    #langPanel {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.95);
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 10;
+    }
+
+    .lang-list {
+      display: grid;
+      grid-template-columns: repeat(2,1fr);
+      gap: 10px;
+    }
+
+    button {
+      margin-top: 12px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      background: #1db954;
+      font-size: 16px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
 
 <div id="viewport">
+
+  <div id="langPanel">
+    <h2>What language songs do you want?</h2>
+    <div class="lang-list">
+      <label><input type="checkbox" value="hindi"> Hindi</label>
+      <label><input type="checkbox" value="bhojpuri"> Bhojpuri</label>
+      <label><input type="checkbox" value="haryanvi"> Haryanvi</label>
+      <label><input type="checkbox" value="telugu"> Telugu</label>
+      <label><input type="checkbox" value="english"> English</label>
+      <label><input type="checkbox" value="punjabi"> Punjabi</label>
+      <label><input type="checkbox" value="tamil"> Tamil</label>
+      <label><input type="checkbox" value="all"> All</label>
+    </div>
+    <button onclick="saveLanguagePreference()">Continue</button>
+  </div>
+
   <div id="card">
     <h2 id="title">Loading...</h2>
     <img id="cover">
     <br><br>
     <audio id="player" controls preload="metadata"></audio>
+    <br>
+    <button id="nextHookBtn" onclick="playNextHook()">⏭ Next Hook</button>
   </div>
+
 </div>
 
 <script>
 let startTime = 0;
-let offsetY = 0;
 let scrolling = false;
+let offsetY = 0;
 
 const card = document.getElementById("card");
 const audio = document.getElementById("player");
 
 const CACHE_KEY = "played_songs_cache";
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const LANG_KEY = "language_score";
+const LANG_INIT = "language_initialized";
 
-/* ---------------- CACHE FUNCTIONS ---------------- */
+/* ---------- HOOK CONTROL ---------- */
+let hooks = [];
+let currentHookIndex = 0;
 
-function getCache(){
-  let data = localStorage.getItem(CACHE_KEY);
-  return data ? JSON.parse(data) : {};
+function parseTime(t){
+  if(!t) return 0;
+  let [m, s] = t.split(":");
+  return parseInt(m) * 60 + parseInt(s);
 }
 
-function saveCache(cache){
-  localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+function extractHooks(song){
+  if(song.hook?.hooks && Array.isArray(song.hook.hooks)){
+    return song.hook.hooks;
+  }
+  if(song.hook?.primehook){
+    return [song.hook.primehook];
+  }
+  return ["00:00"];
 }
 
-function cleanCache(){
-  let cache = getCache();
-  let now = Date.now();
+function crossfadeTo(seconds){
+  const step = 0.05;
+  let vol = audio.volume || 1;
 
-  for(let id in cache){
-    if(now - cache[id] > CACHE_TTL){
-      delete cache[id];
+  let fadeOut = setInterval(() => {
+    vol -= step;
+    if(vol <= 0){
+      vol = 0;
+      clearInterval(fadeOut);
+
+      audio.currentTime = seconds;
+
+      let fadeIn = setInterval(() => {
+        vol += step;
+        if(vol >= 1){
+          vol = 1;
+          clearInterval(fadeIn);
+        }
+        audio.volume = vol;
+      }, 30);
+    }
+    audio.volume = vol;
+  }, 30);
+}
+
+function playNextHook(){
+  if(!hooks.length) return;
+
+  currentHookIndex++;
+  if(currentHookIndex >= hooks.length){
+    currentHookIndex = 0;
+  }
+
+  let sec = parseTime(hooks[currentHookIndex]);
+  crossfadeTo(sec);
+}
+
+/* ---------- LANGUAGE STORAGE ---------- */
+
+function getLangScore(){
+  let d = localStorage.getItem(LANG_KEY);
+  return d ? JSON.parse(d) : {};
+}
+
+function saveLangScore(obj){
+  localStorage.setItem(LANG_KEY, JSON.stringify(obj));
+}
+
+function updateLangScore(lang, delta){
+  let s = getLangScore();
+  if(!s[lang]) s[lang] = 5;
+  s[lang] = Math.max(1, Math.min(10, s[lang] + delta));
+  saveLangScore(s);
+}
+
+function getBestLanguage(){
+  let s = getLangScore();
+  let best = null, val = -1;
+  for(let k in s){
+    if(s[k] > val){
+      val = s[k];
+      best = k;
     }
   }
-  saveCache(cache);
+  return best;
 }
 
-function isInCache(songId){
-  cleanCache();
-  let cache = getCache();
-  return songId in cache;
+function saveLanguagePreference(){
+  let checks = document.querySelectorAll("#langPanel input:checked");
+  let scores = {};
+  let selected = Array.from(checks).map(c => c.value);
+
+  if(selected.includes("all") || selected.length === 0){
+    saveLangScore({});
+  } else {
+    selected.forEach(l => scores[l] = 8);
+    saveLangScore(scores);
+  }
+
+  localStorage.setItem(LANG_INIT, "true");
+  document.getElementById("langPanel").style.display = "none";
+  loadSong();
 }
 
-function markInCache(songId){
-  let cache = getCache();
-  cache[songId] = Date.now();
-  saveCache(cache);
+function checkFirstTime(){
+  if(!localStorage.getItem(LANG_INIT)){
+    document.getElementById("langPanel").style.display = "flex";
+  }
 }
 
-/* ---------------- SONG LOADER ---------------- */
+/* ---------- SONG CACHE ---------- */
 
-async function loadSong(action="skip") {
-  const res = await fetch(`/next_song?action=${action}`);
+function getCache(){
+  let d = localStorage.getItem(CACHE_KEY);
+  return d ? JSON.parse(d) : {};
+}
+
+function saveCache(c){
+  localStorage.setItem(CACHE_KEY, JSON.stringify(c));
+}
+
+function isInCache(id){
+  let c = getCache();
+  return id in c;
+}
+
+function markInCache(id){
+  let c = getCache();
+  c[id] = Date.now();
+  saveCache(c);
+}
+
+/* ---------- LOAD SONG ---------- */
+
+async function loadSong(action="skip"){
+  let lang = getBestLanguage() || "";
+  const res = await fetch(`/next_song?action=${action}&preferred_lang=${lang}`);
   const song = await res.json();
 
-  // 🔥 NEW: if already seen, auto skip
-  // if(isInCache(song.id)){
-  //   console.log("Already played, skipping:", song.id);
-  //   return loadSong("skipped");
-  // }
-  // new
   if(isInCache(song.id)){
-  console.log("Already played, skipping (cache):", song.id);
-  return loadSong("liked"); // <-- important change
+    return loadSong("liked");
   }
 
   document.getElementById("title").innerText = song.name;
   document.getElementById("cover").src = song.image[2].url;
 
-  // audio.src = song.downloadUrl[4].url;
-
-  // let hook = song.hook?.primehook || "00:00";
-  // let [m, s] = hook.split(":");
-  // let seconds = parseInt(m)*60 + parseInt(s);
-
-  // audio.currentTime = seconds;
-  // audio.play().catch(()=>alert("Tap once to allow audio"));
-
-  // new
   audio.pause();
   audio.src = song.downloadUrl[4].url;
   audio.preload = "metadata";
 
-  let hook = song.hook?.primehook || "00:00";
-  let [m, s] = hook.split(":");
-  let seconds = parseInt(m)*60 + parseInt(s);
+  hooks = extractHooks(song);
+  currentHookIndex = 0;
+
+  let seconds = parseTime(hooks[0]);
 
   audio.onloadedmetadata = () => {
-    audio.currentTime = seconds;   // seek only after metadata
-    audio.play().catch(()=>alert("Tap once to allow audio"));
+    audio.currentTime = seconds;
+    audio.volume = 1;
+    audio.play();
   };
 
-
+  if(action === "liked"){
+    updateLangScore(song.language || "unknown", +1);
+  }
+  if(action === "skipped"){
+    updateLangScore(song.language || "unknown", -1);
+  }
 
   startTime = Date.now();
-
-  // mark as shown immediately
   markInCache(song.id);
 }
 
-/* ---------------- DECISION ---------------- */
+/* ---------- USER ACTION ---------- */
 
 function decideAction(){
-  let listened = (Date.now() - startTime) / 1000;
-  return listened > 12 ? "liked" : "skipped";
+  let t = (Date.now() - startTime) / 1000;
+  return t > 12 ? "liked" : "skipped";
 }
 
 function snapNext(){
   if(scrolling) return;
   scrolling = true;
-
   let action = decideAction();
 
-  card.style.transition = "transform 0.35s ease-out";
   card.style.transform = "translateY(-100%)";
 
   setTimeout(async () => {
     await loadSong(action);
-
     card.style.transition = "none";
     card.style.transform = "translateY(100%)";
 
-    requestAnimationFrame(() => {
+    requestAnimationFrame(()=>{
       card.style.transition = "transform 0.35s ease-out";
       card.style.transform = "translateY(0)";
       scrolling = false;
     });
-
-  }, 350);
+  },350);
 }
 
-/* ---------------- WHEEL SCROLL ---------------- */
-
-document.addEventListener("wheel", e => {
+document.addEventListener("wheel", e=>{
   if(scrolling) return;
-
   offsetY -= e.deltaY * 0.5;
-  card.style.transition = "none";
   card.style.transform = `translateY(${offsetY}px)`;
-
-  if(offsetY < -window.innerHeight * 0.25){
+  if(offsetY < -window.innerHeight*0.25){
     offsetY = 0;
     snapNext();
   }
 });
 
-/* ---------------- TOUCH SWIPE ---------------- */
-
-let startY = 0;
-
-card.addEventListener("touchstart", e => {
-  startY = e.touches[0].clientY;
-});
-
-card.addEventListener("touchmove", e => {
-  let moveY = e.touches[0].clientY;
-  offsetY = moveY - startY;
-  card.style.transition = "none";
-  card.style.transform = `translateY(${offsetY}px)`;
-});
-
-card.addEventListener("touchend", () => {
-  if(offsetY < -window.innerHeight * 0.25){
-    offsetY = 0;
-    snapNext();
-  } else {
-    card.style.transition = "transform 0.2s ease-out";
-    card.style.transform = "translateY(0)";
-    offsetY = 0;
-  }
-});
-
-/* ---------------- FIRST LOAD ---------------- */
-cleanCache();
-loadSong();
+checkFirstTime();
 </script>
 
 </body>
