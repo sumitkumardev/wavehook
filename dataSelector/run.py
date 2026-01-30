@@ -1,6 +1,5 @@
 # Working well sent data to mongo db as per requirement
-import requests
-import os
+import requests, os, time
 from pymongo import MongoClient
 
 BASE_URL = os.environ.get("SAAVN_API_URL")
@@ -13,12 +12,23 @@ db = client["musicdb"]
 songs_collection = db["songs"]
 
 # ---------------------------------------
-def search_playlists(query):
+def search_playlists(query, retries=3):
     url = f"{BASE_URL}/search/playlists"
     params = {"query": query}
-    response = requests.get(url, params=params)
-    response.raise_for_status()
-    return response.json()
+
+    for attempt in range(retries):
+        response = requests.get(url, params=params)
+
+        if response.status_code == 429:
+            wait = 5 * (attempt + 1)
+            print(f"⚠️ Rate limited. Waiting {wait}s...")
+            time.sleep(wait)
+            continue
+
+        response.raise_for_status()
+        return response.json()
+
+    raise RuntimeError("Failed after too many retries")
 
 # ---------------------------------------
 def fetch_playlist_songs(playlist_id):
