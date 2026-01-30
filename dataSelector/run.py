@@ -1,34 +1,45 @@
 # Working well sent data to mongo db as per requirement
-import requests, os, time
+
+import requests
+import json
+import os
 from pymongo import MongoClient
 
 BASE_URL = os.environ.get("SAAVN_API_URL")
 if BASE_URL is None:
     raise RuntimeError("SAAVN_API_URL environment variable not set")
 
+PLAYLIST_FILE = "playlists.json"
+
 # 🔐 MongoDB connection
 client = MongoClient(os.environ["MONGO_URI"])
+
 db = client["musicdb"]
 songs_collection = db["songs"]
 
 # ---------------------------------------
-def search_playlists(query, retries=3):
+def search_playlists(language):
     url = f"{BASE_URL}/search/playlists"
-    params = {"query": query}
+    params = {"query": language}
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+    return response.json()
 
-    for attempt in range(retries):
-        response = requests.get(url, params=params)
+# ---------------------------------------
+def save_playlist_ids(language):
+    response = search_playlists(language)
 
-        if response.status_code == 429:
-            wait = 5 * (attempt + 1)
-            print(f"⚠️ Rate limited. Waiting {wait}s...")
-            time.sleep(wait)
-            continue
+    playlists = []
+    for item in response.get("data", {}).get("results", []):
+        playlists.append({
+            "playlist_id": item["id"],
+            "songCount": item.get("songCount", 0)
+        })
 
-        response.raise_for_status()
-        return response.json()
+    with open(PLAYLIST_FILE, "w") as f:
+        json.dump({language: playlists}, f, indent=2)
 
-    raise RuntimeError("Failed after too many retries")
+    print(f"✅ Saved playlists for {language}")
 
 # ---------------------------------------
 def fetch_playlist_songs(playlist_id):
@@ -39,59 +50,63 @@ def fetch_playlist_songs(playlist_id):
     return response.json()
 
 # ---------------------------------------
-def save_songs_to_mongodb(query):
-    playlists_response = search_playlists(query)
+def save_songs_to_mongodb():
+    with open(PLAYLIST_FILE, "r") as f:
+        playlists_data = json.load(f)
 
-    playlists = playlists_response.get("data", {}).get("results", [])
+    for language, playlists in playlists_data.items():
+        for playlist in playlists:
+            playlist_id = playlist["playlist_id"]
+            print(f"🎵 Fetching → {playlist_id}")
 
-    for item in playlists:
-        playlist_id = item.get("id")
-        if not playlist_id:
-            continue
+            response = fetch_playlist_songs(playlist_id)
+            songs = response.get("data", {}).get("songs", [])
 
-        print(f"🎵 Fetching → {playlist_id}")
+            for song in songs:
+                song_id = song.get("id")
+                if not song_id:
+                    continue
 
-        response = fetch_playlist_songs(playlist_id)
-        songs = response.get("data", {}).get("songs", [])
+                song["_id"] = song_id      # MongoDB primary key
+                song["playlist_id"] = playlist_id
+                # song["language"] = language
 
-        for song in songs:
-            song_id = song.get("id")
-            if not song_id:
-                continue
+                # UPSERT = insert if not exists, update if exists
+                songs_collection.update_one(
+                    {"_id": song_id},
+                    {"$set": song},
+                    upsert=True
+                )
 
-            song["_id"] = song_id
-            song["playlist_id"] = playlist_id
+    print("✅ All songs saved into MongoDB")
 
-            # DO NOT overwrite API language
-            songs_collection.update_one(
-                {"_id": song_id},
-                {"$set": song},
-                upsert=True
-            )
-
-    print(f"✅ Songs saved for query → {query}")
+# ---------------------------------------
 
 # ---------------------------------------
 def get_language_queries_from_db():
     query_collection = db["language_query"]
+
     doc = query_collection.find_one()
     if not doc:
         return []
 
     combined = []
+
     for key in ["language", "querry", "artist", "year"]:
         values = doc.get(key, [])
         if isinstance(values, list):
             for v in values:
-                if v:
+                if v:   # skip empty / null
                     combined.append(str(v))
 
     return combined
-
 # ---------------------------------------
+
+
 if __name__ == "__main__":
     language_list = get_language_queries_from_db()
 
     for LANGUAGE in language_list:
         print(f"\n Processing → {LANGUAGE}")
-        save_songs_to_mongodb(LANGUAGE)
+        save_playlist_ids(LANGUAGE)
+        save_songs_to_mongodb()
