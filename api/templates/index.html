@@ -121,30 +121,36 @@ function updateMediaSession(song){
       ]
     });
 
-    navigator.mediaSession.setActionHandler("play", () => {
-      audio.play();
-    });
+    navigator.mediaSession.setActionHandler("play", () => audio.play());
+    navigator.mediaSession.setActionHandler("pause", () => audio.pause());
+    navigator.mediaSession.setActionHandler("nexttrack", () => snapNext());
 
-    navigator.mediaSession.setActionHandler("pause", () => {
-      audio.pause();
-    });
-
-    navigator.mediaSession.setActionHandler("nexttrack", () => {
-      snapNext();
+    // enable seek from notification
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      if (details.fastSeek && "fastSeek" in audio) {
+        audio.fastSeek(details.seekTime);
+      } else {
+        audio.currentTime = details.seekTime;
+      }
+      updatePositionState();
     });
   }
 }
 
 /* ---------- POSITION STATE ---------- */
-audio.addEventListener("timeupdate", () => {
-  if ("mediaSession" in navigator && audio.duration) {
+function updatePositionState(){
+  if ("mediaSession" in navigator && !isNaN(audio.duration)) {
     navigator.mediaSession.setPositionState({
       duration: audio.duration,
       playbackRate: audio.playbackRate,
       position: audio.currentTime
     });
   }
-});
+}
+
+audio.addEventListener("timeupdate", updatePositionState);
+audio.addEventListener("play", updatePositionState);
+audio.addEventListener("pause", updatePositionState);
 
 /* ---------- HOOK CONTROL ---------- */
 let hooks = [];
@@ -293,7 +299,7 @@ async function loadSong(action="skip"){
   document.getElementById("title").innerText = song.name;
   document.getElementById("cover").src = song.image[2].url;
 
-  updateMediaSession(song); // 👈 media session update
+  updateMediaSession(song); // media session update
 
   audio.pause();
   audio.src = song.downloadUrl[4].url;
