@@ -109,6 +109,43 @@ const CACHE_KEY = "played_songs_cache";
 const LANG_KEY = "language_score";
 const LANG_INIT = "language_initialized";
 
+/* ---------- MEDIA SESSION ---------- */
+function updateMediaSession(song){
+  if ("mediaSession" in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: song.name,
+      artist: song.language || "WaveHook",
+      album: "WaveHook",
+      artwork: [
+        { src: song.image[2].url, sizes: "256x256", type: "image/png" }
+      ]
+    });
+
+    navigator.mediaSession.setActionHandler("play", () => {
+      audio.play();
+    });
+
+    navigator.mediaSession.setActionHandler("pause", () => {
+      audio.pause();
+    });
+
+    navigator.mediaSession.setActionHandler("nexttrack", () => {
+      snapNext();
+    });
+  }
+}
+
+/* ---------- POSITION STATE ---------- */
+audio.addEventListener("timeupdate", () => {
+  if ("mediaSession" in navigator && audio.duration) {
+    navigator.mediaSession.setPositionState({
+      duration: audio.duration,
+      playbackRate: audio.playbackRate,
+      position: audio.currentTime
+    });
+  }
+});
+
 /* ---------- HOOK CONTROL ---------- */
 let hooks = [];
 let currentHookIndex = 0;
@@ -256,6 +293,8 @@ async function loadSong(action="skip"){
   document.getElementById("title").innerText = song.name;
   document.getElementById("cover").src = song.image[2].url;
 
+  updateMediaSession(song); // 👈 media session update
+
   audio.pause();
   audio.src = song.downloadUrl[4].url;
   audio.preload = "metadata";
@@ -342,7 +381,6 @@ card.addEventListener("touchend", () => {
     offsetY = 0;
   }
 });
-
 
 checkFirstTime();
 </script>
