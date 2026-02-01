@@ -1,15 +1,16 @@
-*{
+* {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
 }
+
 body {
     margin: 0;
     background: linear-gradient(120deg, #000, #000, #000);
     background-size: 400% 400%;
     animation: gradientMove 20s ease infinite;
     color: white;
-    font-family: sans-serif;
+    font-family: "Poppins", sans-serif;
     overflow: hidden;
     transition: background 1.2s ease;
 }
@@ -177,6 +178,7 @@ audio#player {
     justify-content: space-between;
     font-size: 13px;
     color: #fefefe;
+    font-weight: 300
 }
 
 #title {
@@ -184,6 +186,8 @@ audio#player {
     white-space: nowrap;
     position: relative;
     text-align: left;
+    font-size: 24px;
+    font-weight: 600;
     margin: 0;
 }
 
@@ -216,6 +220,7 @@ input#seek {
 
 #artist {
     font-size: 14px;
+    font-weight: 400;
 }
 
 /* player seek bar  */
