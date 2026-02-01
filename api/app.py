@@ -49,17 +49,22 @@ def get_primary_song(language=None):
 
 # ---------------- RECOMMENDED PICK ----------------
 
-def get_recommended_from_primary(primary_id):
+def get_recommended_from_primary(primary_id, language=None):
     rec = rec_col.find_one({"song_id": primary_id})
     if not rec:
         return None
 
     for r in rec["recommended"]:
         sid = r["song_id"]
+
         if is_recently_played(sid):
             continue
 
-        song = songs_col.find_one({"id": sid})
+        query = {"id": sid}
+        if language:
+            query["language"] = language
+
+        song = songs_col.find_one(query)
         if song:
             return song
 
@@ -67,7 +72,7 @@ def get_recommended_from_primary(primary_id):
 
 # ---------------- VECTOR PICK ----------------
 
-def get_vector_recommendation(song_id):
+def get_vector_recommendation(song_id, language=None):
     try:
         recs = recommend(song_id, k=5)
     except:
@@ -75,10 +80,15 @@ def get_vector_recommendation(song_id):
 
     for r in recs:
         sid = r["song_id"]
+
         if is_recently_played(sid):
             continue
 
-        song = songs_col.find_one({"id": sid})
+        query = {"id": sid}
+        if language:
+            query["language"] = language
+
+        song = songs_col.find_one(query)
         if song:
             return song
 
@@ -89,6 +99,19 @@ def get_vector_recommendation(song_id):
 @app.route("/")
 def home():
     return render_template("index.html")
+
+# ✅ NEW ROUTE FOR PREVIOUS BUTTON
+@app.route("/song_by_id")
+def song_by_id():
+    song_id = request.args.get("id")
+    if not song_id:
+        return jsonify({"error": "missing id"}), 400
+
+    song = songs_col.find_one({"id": song_id})
+    if not song:
+        return jsonify({"error": "song not found"}), 404
+
+    return jsonify(song)
 
 @app.route("/next_song")
 def next_song():
@@ -107,7 +130,7 @@ def next_song():
         SESSION["skip_count"] = 0
 
         if not SESSION["in_chain"]:
-            song = get_recommended_from_primary(SESSION["primary_song"])
+            song = get_recommended_from_primary(SESSION["primary_song"], preferred_lang)
             if song:
                 SESSION["in_chain"] = True
             else:
@@ -115,7 +138,7 @@ def next_song():
                 SESSION["primary_song"] = song["id"]
                 SESSION["in_chain"] = False
         else:
-            song = get_recommended_from_primary(SESSION["primary_song"])
+            song = get_recommended_from_primary(SESSION["primary_song"], preferred_lang)
             if not song:
                 song = get_primary_song(preferred_lang)
                 SESSION["primary_song"] = song["id"]
@@ -127,7 +150,7 @@ def next_song():
 
         # ----- 1st skip → same chain -----
         if SESSION["skip_count"] == 1:
-            song = get_recommended_from_primary(SESSION["primary_song"])
+            song = get_recommended_from_primary(SESSION["primary_song"], preferred_lang)
             if not song:
                 song = get_primary_song(preferred_lang)
                 SESSION["primary_song"] = song["id"]
@@ -135,7 +158,7 @@ def next_song():
 
         # ----- 2nd skip → vector similarity -----
         elif SESSION["skip_count"] == 2:
-            song = get_vector_recommendation(SESSION["primary_song"])
+            song = get_vector_recommendation(SESSION["primary_song"], preferred_lang)
             if not song:
                 song = get_primary_song(preferred_lang)
                 SESSION["primary_song"] = song["id"]

@@ -1,395 +1,147 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <title>WaveHook</title>
   <meta name="theme-color" content="#333333">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      margin: 0;
-      background: black;
-      color: white;
-      font-family: sans-serif;
-      overflow: hidden;
-    }
-
-    #viewport {
-      height: 100vh;
-      width: 100%;
-      overflow: hidden;
-      position: relative;
-    }
-
-    #card {
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      transition: transform 0.35s ease-out;
-    }
-
-    img {
-      width: 250px;
-      border-radius: 10px;
-    }
-
-    h2 {
-      padding: 10px;
-      text-align: center;
-    }
-
-    #langPanel {
-      position: absolute;
-      inset: 0;
-      background: rgba(0,0,0,0.95);
-      display: none;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      z-index: 10;
-    }
-
-    .lang-list {
-      display: grid;
-      grid-template-columns: repeat(2,1fr);
-      gap: 10px;
-    }
-
-    button {
-      margin-top: 12px;
-      padding: 10px 20px;
-      border-radius: 8px;
-      border: none;
-      background: #1db954;
-      font-size: 16px;
-      cursor: pointer;
-    }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
 
-<div id="viewport">
+  <div id="viewport">
 
-  <div id="langPanel">
-    <h2>What language songs do you want?</h2>
-    <div class="lang-list">
-      <label><input type="checkbox" value="hindi"> Hindi</label>
-      <label><input type="checkbox" value="bhojpuri"> Bhojpuri</label>
-      <label><input type="checkbox" value="haryanvi"> Haryanvi</label>
-      <label><input type="checkbox" value="telugu"> Telugu</label>
-      <label><input type="checkbox" value="english"> English</label>
-      <label><input type="checkbox" value="punjabi"> Punjabi</label>
-      <label><input type="checkbox" value="tamil"> Tamil</label>
-      <label><input type="checkbox" value="all"> All</label>
+    <div id="langPanel">
+      <h2>Which language You want to Mix?</h2>
+      <div class="lang-list">
+        <label><input type="checkbox" value="hindi"> Hindi</label>
+        <label><input type="checkbox" value="bhojpuri"> Bhojpuri</label>
+        <label><input type="checkbox" value="haryanvi"> Haryanvi</label>
+        <label><input type="checkbox" value="telugu"> Telugu</label>
+        <label><input type="checkbox" value="english"> English</label>
+        <label><input type="checkbox" value="punjabi"> Punjabi</label>
+        <label><input type="checkbox" value="tamil"> Tamil</label>
+        <label><input type="checkbox" value="all"> All</label>
+      </div>
+      <button onclick="saveLanguagePreference()">Continue</button>
     </div>
-    <button onclick="saveLanguagePreference()">Continue</button>
-  </div>
 
-  <div id="card">
-    <h2 id="title">Loading...</h2>
-    <img id="cover">
-    <br><br>
-    <audio id="player" controls preload="metadata"></audio>
-    <br>
-    <button id="nextHookBtn" onclick="playNextHook()">⏭ Next Hook</button>
-  </div>
+    <div id="card">
+      <div class="cardMain">
+        <div class="subMain">
+          <img id="cover">
+          <button class="button-hook" onclick="playNextHook()"><svg fill="#000000" preserveAspectRatio="xMidYMid"
+              viewBox="-33 0 255 255" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="a" x1="94.141" x2="94.141" y1="255" y2=".188" gradientUnits="userSpaceOnUse">
+                  <stop stop-color="#ff4c0d" offset="0" />
+                  <stop stop-color="#fc9502" offset="1" />
+                </linearGradient>
+              </defs>
+              <g fill-rule="evenodd">
+                <path class="cls-3"
+                  d="m187.9 164.81c-2.096 50.059-43.325 90.003-93.899 90.003-51.915 0-94-43.5-94-94-0-6.75-0.121-20.24 10-43 6.057-13.621 9.856-22.178 12-30 1.178-4.299 3.469-11.129 10 0 3.851 6.562 4 16 4 16s14.328-10.995 24-32c14.179-30.793 2.866-49.2-1-62-1.338-4.428-2.178-12.386 7-9 9.352 3.451 34.076 20.758 47 39 18.445 26.035 25 51 25 51s5.906-7.33 8-15c2.365-8.661 2.4-17.239 9.999-7.999 7.227 8.787 17.96 25.3 24.001 40.999 10.969 28.509 7.899 55.997 7.899 55.997z" />
+                <path class="cls-4"
+                  d="m94 254.81c-35.899 0-65-29.101-65-65 0-21.661 8.729-34.812 26.896-52.646 11.632-11.419 22.519-25.444 27.146-34.994 0.911-1.88 2.984-11.677 10.977-0.206 4.193 6.016 10.766 16.715 14.981 25.846 7.266 15.743 9 31 9 31s7.121-4.196 12-15c1.573-3.482 4.753-16.664 13.643-3.484 6.523 9.672 15.484 27.062 15.357 49.484 0 35.899-29.102 65-65 65z" />
+                <path class="cls-5"
+                  d="m95 183.81c9.25 0 9.25 17.129 21 40 7.824 15.229-3.879 31-21 31s-26-13.879-26-31c0-17.12 16.75-40 26-40z" />
+              </g>
+            </svg>
+          </button>
+        </div>
+      </div>
 
-</div>
+      <div class="cardMainInfo">
+        <div class="title-wrap">
+          <h2 id="title" class="marquee">Loading...</h2>
+          <span id="artist">Loading...</span>
+        </div>
+        <audio id="player" controls preload="metadata"></audio>
+        <div class="music-controls">
+          <div class="progress-bar">
+            <div id="progress-bar" class="progress"></div>
+            <input type="range" id="seek" min="0" max="100" value="0">
 
-<script>
-let startTime = 0;
-let scrolling = false;
-let offsetY = 0;
+            <div class="music-timer">
+              <div id="current-time">0:00</div>
+              <div id="duration">0:00</div>
+            </div>
+          </div>
 
-const card = document.getElementById("card");
-const audio = document.getElementById("player");
 
-const CACHE_KEY = "played_songs_cache";
-const LANG_KEY = "language_score";
-const LANG_INIT = "language_initialized";
+          <div class="Mctrl">
+            <div id="previous" class="prev">
+              <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                <g>
+                  <path
+                    d="M27.136,3.736C27.508,3.332,28,3.45,28,4v24c0,0.55-0.492,0.668-0.864,0.264L16.449,16.736     c-0.372-0.405-0.325-1.068,0.047-1.473L27.136,3.736z">
+                  </path>
+                  <path
+                    d="M27.602,29.504c-0.441,0-0.868-0.2-1.202-0.563L15.715,17.416c-0.718-0.781-0.697-2.022,0.044-2.829L26.401,3.058     c0.333-0.362,0.76-0.562,1.201-0.562C28.399,2.496,29,3.143,29,4v24C29,28.857,28.399,29.504,27.602,29.504z M27,5.358     l-9.77,10.584c-0.036,0.04-0.044,0.109-0.036,0.132L27,26.646V5.358z">
+                  </path>
+                </g>
+                <g>
+                  <path
+                    d="M14.297,3.736C14.669,3.332,15,3.45,15,4v24c0,0.55-0.331,0.668-0.703,0.264L3.69,16.736     c-0.372-0.405-0.365-1.068,0.007-1.473L14.297,3.736z">
+                  </path>
+                  <path
+                    d="M14.706,29.504c-0.286,0-0.717-0.098-1.146-0.563L2.954,17.414c-0.727-0.791-0.724-2.032,0.006-2.827l10.6-11.527     c0.428-0.466,0.859-0.563,1.146-0.563C15.329,2.496,16,2.967,16,4v24C16,29.033,15.329,29.504,14.706,29.504z M14,5.538     L4.433,15.94c-0.025,0.027-0.023,0.102-0.006,0.119L14,26.463V5.538z">
+                  </path>
+                </g>
+              </svg>
+            </div>
+            <div class="PP">
+              <div id="play" style="display: inline-flex;">
+                <svg class="svg50" id="play_btn" xmlns="http://www.w3.org/2000/svg"
+                  xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="12 12 24 24" xml:space="preserve"
+                  style="display: inline-flex;">
+                  <g>
+                    <path
+                      d="M23.99976,12.4834c-6.3501,0-11.5166,5.16602-11.5166,11.5166s5.1665,11.5166,11.5166,11.5166    c6.35059,0,11.51709-5.16602,11.51709-11.5166S30.35034,12.4834,23.99976,12.4834z M28.36108,24.62402l-6.30322,3.67969    c-0.11328,0.06543-0.23779,0.09863-0.3623,0.09863c-0.12256,0-0.24512-0.03223-0.35693-0.0957    c-0.22607-0.12988-0.36084-0.36328-0.36084-0.62402v-7.36523c0-0.26074,0.13525-0.49316,0.36133-0.62305    c0.22559-0.12988,0.49512-0.12891,0.71973,0.00293l6.30176,3.68652c0.22266,0.12988,0.35547,0.36133,0.35596,0.61914    C28.71655,24.26172,28.58374,24.49316,28.36108,24.62402z">
+                    </path>
+                  </g>
+                </svg>
+              </div>
+              <div id="pause" style="display: none;">
 
-/* ---------- MEDIA SESSION ---------- */
-function updateMediaSession(song){
-  if ("mediaSession" in navigator) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: song.name,
-      artist: song.language || "WaveHook",
-      album: "WaveHook",
-      artwork: [
-        { src: song.image[2].url, sizes: "256x256", type: "image/png" }
-      ]
-    });
+                <svg xmlns="http://www.w3.org/2000/svg" enable-background="new 0 0 32 32" viewBox="0 0 32 32"
+                  id="pause_btn" class="svg50">
+                  <path
+                    d="M16,0.5C7.45001,0.5,0.5,7.45001,0.5,16S7.45001,31.5,16,31.5S31.5,24.54999,31.5,16S24.54999,0.5,16,0.5z M21.14001,21.54999c0,0.83002-0.67004,1.5-1.5,1.5c-0.83002,0-1.5-0.66998-1.5-1.5V10.45001c0-0.83002,0.66998-1.5,1.5-1.5c0.82996,0,1.5,0.66998,1.5,1.5V21.54999z M13.85999,21.54999c0,0.83002-0.66998,1.5-1.5,1.5c-0.82996,0-1.5-0.66998-1.5-1.5V10.45001c0-0.83002,0.67004-1.5,1.5-1.5c0.83002,0,1.5,0.66998,1.5,1.5V21.54999z">
+                  </path>
+                </svg>
+              </div>
+            </div>
+            <div id="next">
+              <svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                <g>
+                  <path
+                    d="M4.561,3.728C4.184,3.328,4,3.45,4,4v24c0,0.55,0.184,0.672,0.561,0.272l10.816-11.544     c0.377-0.4,0.408-1.056,0.031-1.456L4.561,3.728z">
+                  </path>
+                  <path
+                    d="M4.202,29.507L4.202,29.507C4.079,29.507,3,29.465,3,28V4c0-1.465,1.079-1.507,1.202-1.507     c0.568,0,0.958,0.414,1.087,0.55l10.848,11.545c0.725,0.77,0.711,2.038-0.031,2.826L5.29,28.956     C5.16,29.094,4.771,29.507,4.202,29.507z M5.004,5.66L5,26.337l9.674-10.389L5.004,5.66z">
+                  </path>
+                </g>
+                <g>
+                  <path
+                    d="M17.561,3.728C17.184,3.328,17,3.45,17,4v24c0,0.55,0.184,0.672,0.561,0.272l10.816-11.544     c0.377-0.4,0.408-1.056,0.031-1.456L17.561,3.728z">
+                  </path>
+                  <path
+                    d="M17.202,29.507L17.202,29.507C17.079,29.507,16,29.465,16,28V4c0-1.465,1.079-1.507,1.202-1.507     c0.568,0,0.958,0.414,1.087,0.55l10.848,11.545c0.725,0.77,0.711,2.038-0.031,2.826L18.29,28.956     C18.16,29.094,17.771,29.507,17.202,29.507z M18.004,5.66L18,26.337l9.674-10.389L18.004,5.66z">
+                  </path>
+                </g>
+              </svg>
+              </div="">
+            </div>
+          </div>
+        </div>
 
-    navigator.mediaSession.setActionHandler("play", () => audio.play());
-    navigator.mediaSession.setActionHandler("pause", () => audio.pause());
-    navigator.mediaSession.setActionHandler("nexttrack", () => snapNext());
 
-    // enable seek from notification
-    navigator.mediaSession.setActionHandler("seekto", (details) => {
-      if (details.fastSeek && "fastSeek" in audio) {
-        audio.fastSeek(details.seekTime);
-      } else {
-        audio.currentTime = details.seekTime;
-      }
-      updatePositionState();
-    });
-  }
-}
+      </div>
 
-/* ---------- POSITION STATE ---------- */
-function updatePositionState(){
-  if ("mediaSession" in navigator && !isNaN(audio.duration)) {
-    navigator.mediaSession.setPositionState({
-      duration: audio.duration,
-      playbackRate: audio.playbackRate,
-      position: audio.currentTime
-    });
-  }
-}
-
-audio.addEventListener("timeupdate", updatePositionState);
-audio.addEventListener("play", updatePositionState);
-audio.addEventListener("pause", updatePositionState);
-
-/* ---------- HOOK CONTROL ---------- */
-let hooks = [];
-let currentHookIndex = 0;
-
-function parseTime(t){
-  if(!t) return 0;
-  let [m, s] = t.split(":");
-  return parseInt(m) * 60 + parseInt(s);
-}
-
-function extractHooks(song){
-  let list = [];
-
-  if(song.hook?.primehook) list.push(song.hook.primehook);
-  if(song.hook?.sechook)   list.push(song.hook.sechook);
-  if(song.hook?.subhook)   list.push(song.hook.subhook);
-
-  if(list.length === 0) return ["00:00"];
-  return list;
-}
-
-function crossfadeTo(seconds){
-  const step = 0.05;
-  let vol = audio.volume || 1;
-
-  let fadeOut = setInterval(() => {
-    vol -= step;
-    if(vol <= 0){
-      vol = 0;
-      clearInterval(fadeOut);
-
-      audio.currentTime = seconds;
-
-      let fadeIn = setInterval(() => {
-        vol += step;
-        if(vol >= 1){
-          vol = 1;
-          clearInterval(fadeIn);
-        }
-        audio.volume = vol;
-      }, 30);
-    }
-    audio.volume = vol;
-  }, 30);
-}
-
-function playNextHook(){
-  if(!hooks.length) return;
-
-  currentHookIndex++;
-  if(currentHookIndex >= hooks.length){
-    currentHookIndex = 0;
-  }
-
-  let sec = parseTime(hooks[currentHookIndex]);
-  crossfadeTo(sec);
-}
-
-/* ---------- LANGUAGE STORAGE ---------- */
-
-function getLangScore(){
-  let d = localStorage.getItem(LANG_KEY);
-  return d ? JSON.parse(d) : {};
-}
-
-function saveLangScore(obj){
-  localStorage.setItem(LANG_KEY, JSON.stringify(obj));
-}
-
-function updateLangScore(lang, delta){
-  let s = getLangScore();
-  if(!s[lang]) s[lang] = 5;
-  s[lang] = Math.max(1, Math.min(10, s[lang] + delta));
-  saveLangScore(s);
-}
-
-function getBestLanguage(){
-  let s = getLangScore();
-  let best = null, val = -1;
-  for(let k in s){
-    if(s[k] > val){
-      val = s[k];
-      best = k;
-    }
-  }
-  return best;
-}
-
-function saveLanguagePreference(){
-  let checks = document.querySelectorAll("#langPanel input:checked");
-  let scores = {};
-  let selected = Array.from(checks).map(c => c.value);
-
-  if(selected.includes("all") || selected.length === 0){
-    saveLangScore({});
-  } else {
-    selected.forEach(l => scores[l] = 8);
-    saveLangScore(scores);
-  }
-
-  localStorage.setItem(LANG_INIT, "true");
-  document.getElementById("langPanel").style.display = "none";
-  loadSong();
-}
-
-function checkFirstTime(){
-  if(!localStorage.getItem(LANG_INIT)){
-    document.getElementById("langPanel").style.display = "flex";
-  }
-}
-
-/* ---------- SONG CACHE ---------- */
-
-function getCache(){
-  let d = localStorage.getItem(CACHE_KEY);
-  return d ? JSON.parse(d) : {};
-}
-
-function saveCache(c){
-  localStorage.setItem(CACHE_KEY, JSON.stringify(c));
-}
-
-function isInCache(id){
-  let c = getCache();
-  return id in c;
-}
-
-function markInCache(id){
-  let c = getCache();
-  c[id] = Date.now();
-  saveCache(c);
-}
-
-/* ---------- LOAD SONG ---------- */
-
-async function loadSong(action="skip"){
-  let lang = getBestLanguage() || "";
-  const res = await fetch(`/next_song?action=${action}&preferred_lang=${lang}`);
-  const song = await res.json();
-
-  if(isInCache(song.id)){
-    return loadSong("liked");
-  }
-
-  document.getElementById("title").innerText = song.name;
-  document.getElementById("cover").src = song.image[2].url;
-
-  updateMediaSession(song); // media session update
-
-  audio.pause();
-  audio.src = song.downloadUrl[4].url;
-  audio.preload = "metadata";
-
-  hooks = extractHooks(song);
-  currentHookIndex = 0;
-
-  let seconds = parseTime(hooks[0]);
-
-  audio.onloadedmetadata = () => {
-    audio.currentTime = seconds;
-    audio.volume = 1;
-    audio.play();
-  };
-
-  if(action === "liked"){
-    updateLangScore(song.language || "unknown", +1);
-  }
-  if(action === "skipped"){
-    updateLangScore(song.language || "unknown", -1);
-  }
-
-  startTime = Date.now();
-  markInCache(song.id);
-}
-
-/* ---------- USER ACTION ---------- */
-
-function decideAction(){
-  let t = (Date.now() - startTime) / 1000;
-  return t > 12 ? "liked" : "skipped";
-}
-
-function snapNext(){
-  if(scrolling) return;
-  scrolling = true;
-  let action = decideAction();
-
-  card.style.transform = "translateY(-100%)";
-
-  setTimeout(async () => {
-    await loadSong(action);
-    card.style.transition = "none";
-    card.style.transform = "translateY(100%)";
-
-    requestAnimationFrame(()=>{
-      card.style.transition = "transform 0.35s ease-out";
-      card.style.transform = "translateY(0)";
-      scrolling = false;
-    });
-  },350);
-}
-
-document.addEventListener("wheel", e=>{
-  if(scrolling) return;
-  offsetY -= e.deltaY * 0.5;
-  card.style.transform = `translateY(${offsetY}px)`;
-  if(offsetY < -window.innerHeight*0.25){
-    offsetY = 0;
-    snapNext();
-  }
-});
-
-let startY = 0;
-
-card.addEventListener("touchstart", e => {
-  startY = e.touches[0].clientY;
-});
-
-card.addEventListener("touchmove", e => {
-  let moveY = e.touches[0].clientY;
-  offsetY = moveY - startY;
-  card.style.transition = "none";
-  card.style.transform = `translateY(${offsetY}px)`;
-});
-
-card.addEventListener("touchend", () => {
-  if(offsetY < -window.innerHeight * 0.25){
-    offsetY = 0;
-    snapNext();
-  } else {
-    card.style.transition = "transform 0.2s ease-out";
-    card.style.transform = "translateY(0)";
-    offsetY = 0;
-  }
-});
-
-checkFirstTime();
-</script>
-
+    </div>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
+
 </html>
