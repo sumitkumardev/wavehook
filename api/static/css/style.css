@@ -46,12 +46,12 @@ body {
     transition: transform 0.35s ease-out;
     display: flex;
     flex-direction: column;
-    place-content: center;
-    justify-content: space-between;
+    justify-content: center;
 }
 
 img {
     width: 100%;
+    height: 100%;
     object-fit: cover;
 }
 
@@ -105,12 +105,12 @@ button {
 .subMain {
     position: relative;
     display: flex;
-    width: 100%;
-    height: 100%;
+    width: 325px;
+    height: 325px;
     /* place-items: center; */
-    justify-content: center;
+    /* justify-content: center; */
     overflow: hidden;
-    border-radius: 0 0 25px 25px;
+    border-radius: 5px;
 }
 
 /* .cardMain {
@@ -120,9 +120,9 @@ button {
 .cardMainInfo {
     width: 100%;
     /* height: 30vh; */
-    position: fixed;
+    /* position: fixed; */
     /* visibility: hidden; */
-    bottom: 0;
+    /* bottom: 0; */
 }
 
 svg {
@@ -149,7 +149,7 @@ svg {
     left: 0;
     right: 0; */
     align-items: center;
-    padding: 15px;
+    padding: 15px 30px;
     overflow: hidden;
     line-height: 1.4;
 }
@@ -188,7 +188,7 @@ audio#player {
 }
 
 .title-wrap {
-    padding: 15px;
+    padding: 15px 30px;
     line-height: 1.5;
 }
 
@@ -361,4 +361,10 @@ input[type="range"]:active::-moz-range-progress {
 
 input[type="range"]:disabled::-moz-range-thumb {
     cursor: not-allowed;
+}
+
+.cardMain {
+    width: 100%;
+    padding: 20px;
+    place-items: center;
 }
