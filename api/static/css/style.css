@@ -106,8 +106,8 @@ button {
 .subMain {
     position: relative;
     display: flex;
-    width: 325px;
-    height: 325px;
+    width: 300px;
+    height: 300px;
     /* place-items: center; */
     /* justify-content: center; */
     overflow: hidden;
