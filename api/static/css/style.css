@@ -79,6 +79,27 @@ h2 {
     gap: 10px;
 }
 
+.lang-list label {
+    padding: 10px;
+    background: #fefefe;
+    color: #000;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: al1s ease;
+}
+
+#langPanel svg {
+    height: 50px;
+    width: 50px;
+    border-radius: 50px;
+}
+
+.lang-list label:active {
+    transform: scale(.9);
+}
+
 button {
     margin-top: 12px;
     padding: 10px 20px;
