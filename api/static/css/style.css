@@ -228,6 +228,7 @@ input#seek {
 
 .marquee.animate .marquee-track {
     animation: marquee 10s linear infinite;
+    animation-delay: 1s;
 }
 
 @keyframes marquee {

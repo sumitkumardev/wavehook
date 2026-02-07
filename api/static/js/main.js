@@ -19,7 +19,7 @@ const LANG_INIT = "language_initialized";
 function updateMediaSession(song) {
     if ("mediaSession" in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
-            title: song.name,
+            title: decodeHTMLEntities(song.name),
             artist: song.language || "WaveHook",
             album: "WaveHook",
             artwork: [
@@ -393,9 +393,19 @@ async function snapPrevious() {
 
 
 /* ---------- SWIPE ---------- */
+// function decideAction() {
+//     return (Date.now() - startTime) / 1000 > 12 ? "liked" : "skipped";
+// }
+// -------------- new --------------
 function decideAction() {
-    return (Date.now() - startTime) / 1000 > 12 ? "liked" : "skipped";
+    const seconds = (Date.now() - startTime) / 1000;
+    if (seconds < 4) return "hard_skip";
+    if (seconds < 12) return "skipped";
+    return "liked";
 }
+
+
+
 async function snapNext() {
     if (scrolling) return;
     scrolling = true;
@@ -533,7 +543,7 @@ pauseButton.addEventListener("click", () => {
 
 
 /* =========================
-   AUDIO STATE → UI SYNC
+   AUDIO STATE - UI SYNC
    (LOCKSCREEN / NOTIFICATION SAFE)
 ========================= */
 audio.addEventListener("play", () => {
