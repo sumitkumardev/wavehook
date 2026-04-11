@@ -3,6 +3,7 @@ from pymongo import MongoClient
 import random, time, os
 import numpy as np
 
+from . import recommend as rec_module
 from .recommend import (
     recommend,
     load_song_vectors,
@@ -60,10 +61,11 @@ def update_taste_vector(song_id, weight=1.0):
 
     vectors, song_ids, _ = load_song_vectors()
 
-    if song_id not in song_ids:
+    idx_map = rec_module.SONG_ID_INDEX
+    if idx_map is None or song_id not in idx_map:
         return
 
-    vec = vectors[song_ids.index(song_id)]
+    vec = vectors[idx_map[song_id]]
 
     # Guard: never allow negative or zero total weight
     if SESSION["taste_vector"] is None:
@@ -93,17 +95,32 @@ def update_taste_vector(song_id, weight=1.0):
 
 # ---------------- PRIMARY PICK ----------------
 
+# Perf 4: projection to fetch only needed fields
+SONG_PROJECTION = {"_id": 0}
+
 def get_primary_song(language=None):
     query = {}
     if language:
         query["language"] = language
 
-    song = list(songs_col.aggregate([
+    result = list(songs_col.aggregate([
         {"$match": query},
-        {"$sample": {"size": 1}}
-    ]))[0]
+        {"$sample": {"size": 1}},
+        {"$project": {"_id": 0}}
+    ]))
 
-    return song
+    # Bug 2: guard empty result
+    if not result:
+        # fallback: try without language filter
+        result = list(songs_col.aggregate([
+            {"$sample": {"size": 1}},
+            {"$project": {"_id": 0}}
+        ]))
+
+    if not result:
+        return None
+
+    return result[0]
 
 # ---------------- RECOMMENDED PICK ----------------
 
@@ -122,7 +139,7 @@ def get_recommended_from_primary(primary_id, language=None):
         if language:
             query["language"] = language
 
-        song = songs_col.find_one(query)
+        song = songs_col.find_one(query, SONG_PROJECTION)
         if song:
             return song
 
@@ -133,7 +150,7 @@ def get_recommended_from_primary(primary_id, language=None):
 def get_vector_recommendation(song_id, language=None):
     try:
         recs = recommend(song_id, k=5)
-    except:
+    except Exception:
         return None
 
     for r in recs:
@@ -146,7 +163,7 @@ def get_vector_recommendation(song_id, language=None):
         if language:
             query["language"] = language
 
-        song = songs_col.find_one(query)
+        song = songs_col.find_one(query, SONG_PROJECTION)
         if song:
             return song
 
@@ -165,7 +182,8 @@ def song_by_id():
     if not song_id:
         return jsonify({"error": "missing id"}), 400
 
-    song = songs_col.find_one({"id": song_id})
+    # Bug 4: exclude _id to avoid ObjectId serialization issues
+    song = songs_col.find_one({"id": song_id}, {"_id": 0})
     if not song:
         return jsonify({"error": "song not found"}), 404
 
@@ -199,7 +217,7 @@ def recommend_from_taste(language=None):
         if language:
             query["language"] = language
 
-        song = songs_col.find_one(query)
+        song = songs_col.find_one(query, SONG_PROJECTION)
         if song:
             return song
 
@@ -212,66 +230,73 @@ def next_song():
     action = request.args.get("action")  # liked / skipped
     preferred_lang = request.args.get("preferred_lang") or None
 
+    song = None
+
     # ================= FIRST SONG =================
     if SESSION["primary_song"] is None:
         song = get_primary_song(preferred_lang)
-        SESSION["primary_song"] = song["id"]
-        SESSION["in_chain"] = False
-        SESSION["skip_count"] = 0
-    
+        if song:
+            SESSION["primary_song"] = song.get("id")
+            SESSION["in_chain"] = False
+            SESSION["skip_count"] = 0
+
     elif action == "liked":
         SESSION["skip_count"] = 0
 
-    # reinforce taste
+        # reinforce taste
         if SESSION["primary_song"]:
             update_taste_vector(SESSION["primary_song"], weight=1.0)
 
-    # FIRST try taste-based recommendation
+        # FIRST try taste-based recommendation
         if SESSION["taste_vector"] is not None:
             SESSION["taste_vector"] = np.nan_to_num(SESSION["taste_vector"])
 
         song = recommend_from_taste(preferred_lang)
 
-    # fallback: chain recommendation
+        # fallback: chain recommendation
         if not song:
             song = get_recommended_from_primary(
-            SESSION["primary_song"], preferred_lang
-        )
+                SESSION["primary_song"], preferred_lang
+            )
 
-    # fallback: random primary
+        # fallback: random primary
         if not song:
             song = get_primary_song(preferred_lang)
 
     else:
         SESSION["skip_count"] += 1
 
-    # hard skip → penalize taste
+        # hard skip → penalize taste
         if action == "hard_skip":
             update_taste_vector(SESSION["primary_song"], weight=-0.2)
 
-    # ----- 1st skip → taste-based -----
+        # ----- 1st skip → taste-based -----
         if SESSION["skip_count"] == 1:
             song = recommend_from_taste(preferred_lang)
             if not song:
                 song = get_recommended_from_primary(SESSION["primary_song"], preferred_lang)
 
-    # ----- 2nd skip → vector similarity -----
+        # ----- 2nd skip → vector similarity -----
         elif SESSION["skip_count"] == 2:
             song = get_vector_recommendation(SESSION["primary_song"], preferred_lang)
 
-    # ----- 3rd skip → random reset -----
+        # ----- 3rd skip → random reset -----
         else:
             song = get_primary_song(preferred_lang)
             SESSION["skip_count"] = 0
 
-    # ----------------- increase randomness to prevent skips -----------
-    # 15% exploration chance
+        # ----------------- increase randomness to prevent skips -----------
+        # 15% exploration chance
         if random.random() < 0.15:
             song = get_primary_song(preferred_lang)
             SESSION["skip_count"] = 0
 
         if not song:
             song = get_primary_song(preferred_lang)
+
+    # Bug 5: defensive check for song and song["id"]
+    if not song or "id" not in song:
+        return jsonify({"error": "no songs available"}), 503
 
     mark_played(song["id"])
     SESSION["primary_song"] = song["id"]

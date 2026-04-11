@@ -16,12 +16,13 @@ vectors_collection = db.song_vectors
 VECTORS = None
 SONG_IDS = None
 NORMS = None
+SONG_ID_INDEX = None  # song_id → index lookup (O(1))
 
 # -----------------------------
 # Load vectors ONCE
 # -----------------------------
 def load_song_vectors():
-    global VECTORS, SONG_IDS, NORMS
+    global VECTORS, SONG_IDS, NORMS, SONG_ID_INDEX
 
     # already loaded → reuse
     if VECTORS is not None:
@@ -52,6 +53,9 @@ def load_song_vectors():
 
     SONG_IDS = song_ids
 
+    # Perf: build O(1) lookup dict
+    SONG_ID_INDEX = {sid: i for i, sid in enumerate(song_ids)}
+
     print(f"[recommend] Loaded {len(SONG_IDS)} vectors into RAM")
 
     return VECTORS, SONG_IDS, NORMS
@@ -76,22 +80,26 @@ def cosine_similarity_fast(vectors, norms, query_vector):
 def recommend(song_id, k=5):
     vectors, song_ids, norms = load_song_vectors()
 
-    if song_id not in song_ids:
+    if song_id not in SONG_ID_INDEX:
         raise ValueError(f"Song ID {song_id} not found in song_vectors")
 
-    idx = song_ids.index(song_id)
+    idx = SONG_ID_INDEX[song_id]
     query_vector = vectors[idx]
 
     sims = cosine_similarity_fast(vectors, norms, query_vector)
     if sims is None:
         return []
 
-    # sort by similarity (high → low)
-    sorted_idx = np.argsort(sims)[::-1]
+    # Perf: use argpartition O(n) instead of full argsort O(n log n)
+    # Grab extra candidates to account for skipping self
+    n_candidates = min(k + 10, len(sims))
+    top_idx = np.argpartition(sims, -n_candidates)[-n_candidates:]
+    # Sort only the top candidates (tiny array)
+    top_idx = top_idx[np.argsort(sims[top_idx])[::-1]]
 
     recommendations = []
 
-    for i in sorted_idx:
+    for i in top_idx:
         rec_id = song_ids[i]
 
         if rec_id == song_id:
@@ -112,7 +120,8 @@ def recommend(song_id, k=5):
 # Optional manual refresh
 # -----------------------------
 def refresh_vectors():
-    global VECTORS, SONG_IDS, NORMS
+    global VECTORS, SONG_IDS, NORMS, SONG_ID_INDEX
     VECTORS = None
     SONG_IDS = None
     NORMS = None
+    SONG_ID_INDEX = None

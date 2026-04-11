@@ -8,12 +8,43 @@ let startTime = 0;
 let scrolling = false;
 let offsetY = 0;
 
-const card = document.getElementById("card");
-const audio = document.getElementById("player");
+/* ===== DUAL-CARD SYSTEM ===== */
+const cardA = document.getElementById("card-a");
+const cardB = document.getElementById("card-b");
+
+let activeCard = cardA;   // currently visible
+let incomingCard = cardB;  // off-screen, used for next transition
+
+// Helper: get elements within a specific card
+function getCardElements(card) {
+    return {
+        cover: card.querySelector(".cover-img"),
+        title: card.querySelector(".song-title"),
+        artist: card.querySelector(".song-artist"),
+        audio: card.querySelector(".song-audio"),
+        progressBar: card.querySelector(".song-progress"),
+        seekBar: card.querySelector(".song-seek"),
+        currentTimeEl: card.querySelector(".song-current-time"),
+        durationEl: card.querySelector(".song-duration"),
+        playBtn: card.querySelector(".play-btn"),
+        pauseBtn: card.querySelector(".pause-btn"),
+        nextBtn: card.querySelector(".next-btn"),
+        prevBtn: card.querySelector(".prev-btn"),
+    };
+}
+
+// Current active audio shortcut
+function getActiveAudio() {
+    return activeCard.querySelector(".song-audio");
+}
 
 const CACHE_KEY = "played_songs_cache";
 const LANG_KEY = "language_score";
 const LANG_INIT = "language_initialized";
+
+/* ===== TRANSITION DURATION (ms) ===== */
+const TRANSITION_MS = 450;
+const CROSSFADE_MS = 300;
 
 /* ---------- MEDIA SESSION ---------- */
 function updateMediaSession(song) {
@@ -27,8 +58,8 @@ function updateMediaSession(song) {
             ]
         });
 
-        navigator.mediaSession.setActionHandler("play", () => audio.play());
-        navigator.mediaSession.setActionHandler("pause", () => audio.pause());
+        navigator.mediaSession.setActionHandler("play", () => getActiveAudio().play());
+        navigator.mediaSession.setActionHandler("pause", () => getActiveAudio().pause());
         navigator.mediaSession.setActionHandler("nexttrack", () => snapNext());
         navigator.mediaSession.setActionHandler("previoustrack", () => snapPrevious());
 
@@ -37,6 +68,7 @@ function updateMediaSession(song) {
 
 /* ---------- POSITION STATE ---------- */
 function updatePositionState() {
+    const audio = getActiveAudio();
     if ("mediaSession" in navigator && !isNaN(audio.duration)) {
         navigator.mediaSession.setPositionState({
             duration: audio.duration,
@@ -45,7 +77,6 @@ function updatePositionState() {
         });
     }
 }
-audio.addEventListener("timeupdate", updatePositionState);
 
 /* ---------- DARK MULTI-COLOR GRADIENT ---------- */
 function extractPalette(img) {
@@ -73,17 +104,21 @@ function extractPalette(img) {
 }
 
 function setPremiumGradient(img) {
-    const palette = extractPalette(img);
+    try {
+        const palette = extractPalette(img);
 
-    // make colors MUCH darker (dark mode)
-    const dark = c => `rgb(${c[0] * 0.25}, ${c[1] * 0.25}, ${c[2] * 0.25})`;
+        // make colors MUCH darker (dark mode)
+        const dark = c => `rgb(${c[0] * 0.25}, ${c[1] * 0.25}, ${c[2] * 0.25})`;
 
-    const c1 = dark(palette[0]);
-    const c2 = dark(palette[1]);
-    const c3 = dark(palette[2]);
+        const c1 = dark(palette[0]);
+        const c2 = dark(palette[1]);
+        const c3 = dark(palette[2]);
 
-    document.body.style.background =
-        `linear-gradient(120deg, ${c1}, ${c2}, ${c3})`;
+        document.body.style.background =
+            `linear-gradient(120deg, ${c1}, ${c2}, ${c3})`;
+    } catch (e) {
+        // CORS or empty image — ignore silently
+    }
 }
 
 /* ---------- HOOK CONTROL ---------- */
@@ -105,11 +140,10 @@ function extractHooks(song) {
 }
 
 function crossfadeTo(seconds) {
+    const audio = getActiveAudio();
     if (!audio) return;
 
-    const wasPlaying = !audio.paused; // remember state
-
-    fadeVolume(0, 150); // fade out
+    fadeVolume(audio, 0, 150); // fade out
 
     setTimeout(() => {
         // jump to hook
@@ -123,7 +157,7 @@ function crossfadeTo(seconds) {
         audio.play().catch(() => { });
 
         // fade back in
-        fadeVolume(1, 150);
+        fadeVolume(audio, 1, 150);
     }, 180);
 }
 
@@ -159,7 +193,7 @@ function saveLanguagePreference() {
     }
 
     document.getElementById("langPanel").style.display = "none";
-    loadSong();
+    loadFirstSong();
 }
 
 function checkFirstTime() {
@@ -216,12 +250,10 @@ function decodeHTMLEntities(text) {
     return decodedString;
 }
 /* ---------- MARQUEE TITLE ---------- */
-function applyMarqueeToTitle(text) {
-    const title = document.getElementById("title");
-
+function applyMarqueeToTitle(titleEl, text) {
     if (text.length <= 20) {
-        title.classList.remove("animate");
-        title.innerText = text;
+        titleEl.classList.remove("animate");
+        titleEl.innerText = text;
         return;
     }
 
@@ -229,125 +261,332 @@ function applyMarqueeToTitle(text) {
 
     const repeated = text + separator;
 
-    title.innerHTML = `
+    titleEl.innerHTML = `
     <span class="marquee-track">
       <span class="marquee-item">${repeated}</span>
       <span class="marquee-item">${repeated}</span>
     </span>
   `;
 
-    title.classList.add("animate");
+    titleEl.classList.add("animate");
 }
 
 
-/* ---------- LOAD SONG ---------- */
-async function loadSong(action = "skip") {
-    let lang = getBestLanguage() || "";
-    const res = await fetch(`/next_song?action=${action}&preferred_lang=${lang}`);
-    const song = await res.json();
+/* =============================================
+   FADE VOLUME UTILITY (per-audio element)
+============================================= */
+const fadeIntervals = new WeakMap();
 
-    // if (isInCache(song.id)) return loadSong("liked");
-    if (isInCache(song.id)) {
-        console.warn("Cached song skipped:", song.id);
-        return loadSong("skipped");
-    }
+function fadeVolume(audioEl, targetVolume, duration = 250) {
+    if (!audioEl) return;
 
-    // document.getElementById("title").innerText = decodeHTMLEntities(song.name);
-    applyMarqueeToTitle(decodeHTMLEntities(song.name));
-    // document.getElementById("artist").innerText = song.language;
+    // Clear any existing fade for this audio element
+    const existing = fadeIntervals.get(audioEl);
+    if (existing) clearInterval(existing);
+
+    const steps = 20;
+    const stepTime = duration / steps;
+    let currentVolume = audioEl.volume;
+    const step = (targetVolume - currentVolume) / steps;
+
+    const interval = setInterval(() => {
+        currentVolume += step;
+        audioEl.volume = Math.min(Math.max(currentVolume, 0), 1);
+
+        if (
+            (step > 0 && audioEl.volume >= targetVolume) ||
+            (step < 0 && audioEl.volume <= targetVolume) ||
+            step === 0
+        ) {
+            clearInterval(interval);
+            fadeIntervals.delete(audioEl);
+            audioEl.volume = Math.min(Math.max(targetVolume, 0), 1);
+        }
+    }, stepTime);
+
+    fadeIntervals.set(audioEl, interval);
+}
+
+
+/* =============================================
+   POPULATE A CARD with song data
+============================================= */
+// Bug 18 fix: track a generation counter so stale cover.onload is ignored
+let coverGeneration = 0;
+
+function populateCard(card, song) {
+    const els = getCardElements(card);
+
+    // Title
+    applyMarqueeToTitle(els.title, decodeHTMLEntities(song.name));
+
+    // Artist
     const artists = song.artists?.primary?.map(a => decodeHTMLEntities(a.name)) || [];
-    document.getElementById("artist").innerText =
+    els.artist.innerText =
         artists.length > 2
             ? artists.slice(0, 2).join(", ") + " & more"
             : artists.join(", ") || "Unknown Artist";
 
+    // Cover (Bug 18: use generation counter to ignore stale loads)
+    const gen = ++coverGeneration;
+    els.cover.src = song.image[2].url;
+    els.cover.onload = () => {
+        if (gen === coverGeneration) {
+            setPremiumGradient(els.cover);
+        }
+    };
 
-    // applyMarqueeToTitle();
+    // Audio
+    els.audio.src = song.downloadUrl[4].url;
 
-    const cover = document.getElementById("cover");
-    cover.crossOrigin = "anonymous";
-    cover.src = song.image[2].url;
-    cover.onload = () => setPremiumGradient(cover);
-
-    updateMediaSession(song);
-
-    audio.src = song.downloadUrl[4].url;
+    // Hooks
     hooks = extractHooks(song);
     currentHookIndex = 0;
 
-    audio.onloadedmetadata = () => {
-        audio.currentTime = parseTime(hooks[0]);
-        audio.play();
+    // Reset progress UI
+    els.progressBar.style.width = "0%";
+    els.seekBar.value = 0;
+    els.currentTimeEl.textContent = "0:00";
+    els.durationEl.textContent = "0:00";
+
+    // Button state
+    els.playBtn.style.display = "inline-flex";
+    els.pauseBtn.style.display = "none";
+
+    // onloadedmetadata: seek to hook and play
+    els.audio.onloadedmetadata = () => {
+        els.audio.currentTime = parseTime(hooks[0]);
+        els.audio.play().catch(() => { });
+
+        const mins = Math.floor(els.audio.duration / 60);
+        const secs = Math.floor(els.audio.duration % 60);
+        els.durationEl.textContent = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
     };
 
-    if (action === "liked") updateLangScore(song.language || "unknown", +1);
-    if (action === "skipped") updateLangScore(song.language || "unknown", -1);
+    updateMediaSession(song);
+}
 
-    // markInCache(song.id);
-    // startTime = Date.now();
-    let history = getHistory();
 
-    // block same-song repeat
-    if (history.length === 0 || history[history.length - 1] !== song.id) {
-        history.push(song.id);
-        saveHistory(history);
-    } else {
-        console.warn("Duplicate song prevented:", song.id);
+/* =============================================
+   DUAL-CARD TRANSITION ENGINE
+============================================= */
+
+function swapCards() {
+    const temp = activeCard;
+    activeCard = incomingCard;
+    incomingCard = temp;
+}
+
+// Slide the incoming card IN from below, active card OUT upward
+function transitionNext(callback) {
+    const outgoing = activeCard;
+    const incoming = incomingCard;
+
+    // Position incoming just below the screen
+    incoming.className = "song-card";
+    incoming.style.transform = "translateY(100%)";
+    incoming.style.opacity = "0";
+
+    // Force reflow so the starting position is applied
+    incoming.offsetHeight;
+
+    // Add transition classes
+    outgoing.classList.add("slide-exit-up");
+    incoming.classList.add("slide-enter-up");
+
+    // Audio crossfade
+    const outAudio = outgoing.querySelector(".song-audio");
+    const inAudio = incoming.querySelector(".song-audio");
+
+    fadeVolume(outAudio, 0, CROSSFADE_MS);
+
+    // Slight delay before starting incoming audio
+    setTimeout(() => {
+        inAudio.volume = 0;
+        inAudio.play().catch(() => { });
+        fadeVolume(inAudio, 1, CROSSFADE_MS);
+    }, 100);
+
+    // After transition completes
+    setTimeout(() => {
+        // Stop old audio
+        outAudio.pause();
+        outAudio.currentTime = 0;
+
+        // Reset classes
+        outgoing.className = "song-card incoming-card";
+        incoming.className = "song-card active-card";
+
+        // Reset inline styles
+        outgoing.style.transform = "";
+        outgoing.style.opacity = "";
+        incoming.style.transform = "";
+        incoming.style.opacity = "";
+
+        swapCards();
+        rebindActiveCardEvents();
+
+        if (callback) callback();
+    }, TRANSITION_MS + 50);
+}
+
+// Slide the incoming card IN from above, active card OUT downward
+function transitionPrevious(callback) {
+    const outgoing = activeCard;
+    const incoming = incomingCard;
+
+    // Position incoming just above the screen
+    incoming.className = "song-card";
+    incoming.style.transform = "translateY(-100%)";
+    incoming.style.opacity = "0";
+
+    // Force reflow
+    incoming.offsetHeight;
+
+    // Add transition classes
+    outgoing.classList.add("slide-exit-down");
+    incoming.classList.add("slide-enter-down");
+
+    // Audio crossfade
+    const outAudio = outgoing.querySelector(".song-audio");
+    const inAudio = incoming.querySelector(".song-audio");
+
+    fadeVolume(outAudio, 0, CROSSFADE_MS);
+
+    setTimeout(() => {
+        inAudio.volume = 0;
+        inAudio.play().catch(() => { });
+        fadeVolume(inAudio, 1, CROSSFADE_MS);
+    }, 100);
+
+    // After transition completes
+    setTimeout(() => {
+        outAudio.pause();
+        outAudio.currentTime = 0;
+
+        outgoing.className = "song-card incoming-card";
+        incoming.className = "song-card active-card";
+
+        outgoing.style.transform = "";
+        outgoing.style.opacity = "";
+        incoming.style.transform = "";
+        incoming.style.opacity = "";
+
+        swapCards();
+        rebindActiveCardEvents();
+
+        if (callback) callback();
+    }, TRANSITION_MS + 50);
+}
+
+
+/* =============================================
+   LOAD SONG (fetches from backend, populates incoming card)
+============================================= */
+const MAX_RETRY = 3; // Bug 14: prevent infinite recursion
+
+async function loadSong(action = "skip", retryCount = 0) {
+    let lang = getBestLanguage() || "";
+
+    try {
+        const res = await fetch(`/next_song?action=${action}&preferred_lang=${lang}`);
+
+        if (!res.ok) {
+            console.error("Server error:", res.status);
+            scrolling = false;
+            return;
+        }
+
+        const song = await res.json();
+
+        // Bug 14: recursion depth limit
+        if (isInCache(song.id)) {
+            console.warn("Cached song skipped:", song.id);
+            if (retryCount >= MAX_RETRY) {
+                console.warn("Max retry reached, playing cached song.");
+            } else {
+                return loadSong("skipped", retryCount + 1);
+            }
+        }
+
+        // Populate the INCOMING card
+        populateCard(incomingCard, song);
+
+        if (action === "liked") updateLangScore(song.language || "unknown", +1);
+        if (action === "skipped") updateLangScore(song.language || "unknown", -1);
+
+        let history = getHistory();
+
+        // block same-song repeat
+        if (history.length === 0 || history[history.length - 1] !== song.id) {
+            history.push(song.id);
+            saveHistory(history);
+        } else {
+            console.warn("Duplicate song prevented:", song.id);
+        }
+
+        // forward history — Bug 16: call saveForward once instead of twice
+        saveForward([]);
+        let prev = getPrevious();
+
+        // prevent duplicate push
+        if (prev.length === 0 || prev[prev.length - 1] !== song.id) {
+            prev.push(song.id);
+            savePrevious(prev);
+        }
+
+        markInCache(song.id);
+        startTime = Date.now();
+
+    } catch (err) {
+        // Bug 13: handle fetch errors
+        console.error("Failed to load song:", err);
+        scrolling = false;
     }
-
-    // forward history
-    saveForward([]);
-    let prev = getPrevious();
-
-    // prevent duplicate push
-    if (prev.length === 0 || prev[prev.length - 1] !== song.id) {
-        prev.push(song.id);
-        savePrevious(prev);
-    }
-
-    // new song from backend → clear forward stack
-    saveForward([]);
-
-
-    markInCache(song.id);
-    startTime = Date.now();
-
 }
 
 
 function loadSongFromObject(song) {
-    // title
-    applyMarqueeToTitle(decodeHTMLEntities(song.name));
-
-    // artist
-    const artists = song.artists?.primary?.map(a => a.name) || [];
-    document.getElementById("artist").innerText =
-        artists.length > 2
-            ? artists.slice(0, 2).join(", ") + " & more"
-            : artists.join(", ") || "Unknown Artist";
-
-    // cover
-    const cover = document.getElementById("cover");
-    cover.crossOrigin = "anonymous";
-    cover.src = song.image[2].url;
-    cover.onload = () => setPremiumGradient(cover);
-
-    // media session
-    updateMediaSession(song);
-
-    // audio
-    audio.src = song.downloadUrl[4].url;
-
-    // hooks
-    hooks = extractHooks(song);
-    currentHookIndex = 0;
-
-    audio.onloadedmetadata = () => {
-        audio.currentTime = parseTime(hooks[0]);
-        audio.play();
-    };
-
+    populateCard(incomingCard, song);
     startTime = Date.now();
+}
+
+
+/* =============================================
+   FIRST SONG LOAD (special: no transition)
+============================================= */
+async function loadFirstSong() {
+    let lang = getBestLanguage() || "";
+
+    try {
+        const res = await fetch(`/next_song?action=skip&preferred_lang=${lang}`);
+        if (!res.ok) return;
+        const song = await res.json();
+
+        // Populate the ACTIVE card directly (no transition needed)
+        populateCard(activeCard, song);
+
+        let history = getHistory();
+        if (history.length === 0 || history[history.length - 1] !== song.id) {
+            history.push(song.id);
+            saveHistory(history);
+        }
+
+        saveForward([]);
+        let prev = getPrevious();
+        if (prev.length === 0 || prev[prev.length - 1] !== song.id) {
+            prev.push(song.id);
+            savePrevious(prev);
+        }
+
+        markInCache(song.id);
+        startTime = Date.now();
+
+        rebindActiveCardEvents();
+
+    } catch (err) {
+        console.error("Failed to load first song:", err);
+    }
 }
 
 
@@ -372,31 +611,30 @@ async function snapPrevious() {
 
     const prevId = prev[prev.length - 1];
 
-    card.style.transform = "translateY(100%)";
-
-    setTimeout(async () => {
+    try {
         const res = await fetch(`/song_by_id?id=${prevId}`);
+        if (!res.ok) {
+            scrolling = false;
+            return;
+        }
         const song = await res.json();
 
+        // Populate incoming card with previous song
         loadSongFromObject(song);
 
-        card.style.transition = "none";
-        card.style.transform = "translateY(-100%)";
-
-        requestAnimationFrame(() => {
-            card.style.transition = "transform 0.35s ease-out";
-            card.style.transform = "translateY(0)";
+        // Transition: incoming slides from top, active slides down
+        transitionPrevious(() => {
             scrolling = false;
         });
-    }, 350);
+
+    } catch (err) {
+        console.error("Failed to load previous song:", err);
+        scrolling = false;
+    }
 }
 
 
 /* ---------- SWIPE ---------- */
-// function decideAction() {
-//     return (Date.now() - startTime) / 1000 > 12 ? "liked" : "skipped";
-// }
-// -------------- new --------------
 function decideAction() {
     const seconds = (Date.now() - startTime) / 1000;
     if (seconds < 4) return "hard_skip";
@@ -417,186 +655,217 @@ async function snapNext() {
         const nextId = forward.pop();
         saveForward(forward);
 
-        card.style.transform = "translateY(-100%)";
-
-        setTimeout(async () => {
+        try {
             const res = await fetch(`/song_by_id?id=${nextId}`);
+            if (!res.ok) {
+                scrolling = false;
+                return;
+            }
             const song = await res.json();
 
             loadSongFromObject(song);
 
-            card.style.transition = "none";
-            card.style.transform = "translateY(100%)";
+            // push back to previous
+            let prev = getPrevious();
+            if (prev.length === 0 || prev[prev.length - 1] !== nextId) {
+                prev.push(nextId);
+                savePrevious(prev);
+            }
 
-            requestAnimationFrame(() => {
-                card.style.transition = "transform 0.35s ease-out";
-                card.style.transform = "translateY(0)";
+            transitionNext(() => {
                 scrolling = false;
             });
-        }, 350);
+
+        } catch (err) {
+            console.error("Failed to load forward song:", err);
+            scrolling = false;
+        }
 
         return;
     }
 
-    // normal behavior (your old algo)
+    // normal behavior (fetch new song from backend)
     let action = decideAction();
-    card.style.transform = "translateY(-100%)";
 
-    setTimeout(async () => {
-        await loadSong(action);
+    await loadSong(action);
 
-        card.style.transition = "none";
-        card.style.transform = "translateY(100%)";
-
-        requestAnimationFrame(() => {
-            card.style.transition = "transform 0.35s ease-out";
-            card.style.transform = "translateY(0)";
-            scrolling = false;
-        });
-    }, 350);
+    // Trigger transition
+    transitionNext(() => {
+        scrolling = false;
+    });
 }
 
+
+/* =============================================
+   SWIPE + WHEEL EVENTS
+============================================= */
+
+// Bug 15: handle scroll in both directions properly
 document.addEventListener("wheel", e => {
     if (scrolling) return;
+
     offsetY -= e.deltaY * 0.5;
-    card.style.transform = `translateY(${offsetY}px)`;
-    if (offsetY < -window.innerHeight * 0.25) { offsetY = 0; snapNext(); }
-}); let startY = 0;
-card.addEventListener("touchstart", e => {
+
+    // Scroll down → next song
+    if (offsetY < -window.innerHeight * 0.25) {
+        offsetY = 0;
+        activeCard.style.transform = "";
+        snapNext();
+        return;
+    }
+
+    // Scroll up → previous song
+    if (offsetY > window.innerHeight * 0.25) {
+        offsetY = 0;
+        activeCard.style.transform = "";
+        snapPrevious();
+        return;
+    }
+
+    // Visual drag feedback
+    activeCard.classList.add("dragging");
+    activeCard.style.transform = `translateY(${offsetY}px)`;
+});
+
+// Reset on scroll end (no threshold reached)
+document.addEventListener("wheel", (() => {
+    let timeout;
+    return (e) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+            if (!scrolling && offsetY !== 0) {
+                offsetY = 0;
+                activeCard.classList.remove("dragging");
+                activeCard.style.transition = "transform 0.2s ease-out";
+                activeCard.style.transform = "translateY(0)";
+                setTimeout(() => {
+                    activeCard.style.transition = "";
+                    activeCard.style.transform = "";
+                }, 200);
+            }
+        }, 150);
+    };
+})());
+
+
+let startY = 0;
+
+// Touch events: operate on active card
+document.addEventListener("touchstart", e => {
+    if (scrolling) return;
     startY = e.touches[0].clientY;
 });
-card.addEventListener("touchmove", e => {
+
+document.addEventListener("touchmove", e => {
+    if (scrolling) return;
     let moveY = e.touches[0].clientY;
     offsetY = moveY - startY;
-    card.style.transition = "none";
-    card.style.transform = `translateY(${offsetY}px)`;
+    activeCard.classList.add("dragging");
+    activeCard.style.transform = `translateY(${offsetY}px)`;
 });
-card.addEventListener("touchend", () => {
-    if (offsetY < -window.innerHeight * 0.25) { offsetY = 0; snapNext(); } else {
-        card.style.transition = "transform 0.2s ease-out"; card.style.transform = "translateY(0)"; offsetY = 0;
+
+document.addEventListener("touchend", () => {
+    if (scrolling) return;
+
+    // Swipe up → next
+    if (offsetY < -window.innerHeight * 0.25) {
+        offsetY = 0;
+        activeCard.classList.remove("dragging");
+        snapNext();
+    }
+    // Swipe down → previous
+    else if (offsetY > window.innerHeight * 0.25) {
+        offsetY = 0;
+        activeCard.classList.remove("dragging");
+        snapPrevious();
+    }
+    // Snap back
+    else {
+        activeCard.classList.remove("dragging");
+        activeCard.style.transition = "transform 0.2s ease-out";
+        activeCard.style.transform = "translateY(0)";
+        setTimeout(() => {
+            activeCard.style.transition = "";
+            activeCard.style.transform = "";
+        }, 200);
+        offsetY = 0;
     }
 });
+
 checkFirstTime();
 
 
+/* =============================================
+   BIND EVENTS TO ACTIVE CARD
+   Re-called after every card swap
+============================================= */
+function rebindActiveCardEvents() {
+    const els = getCardElements(activeCard);
+    const audio = els.audio;
 
+    // Play/Pause buttons
+    els.playBtn.onclick = () => {
+        audio.volume = 0;
+        audio.play();
+        fadeVolume(audio, 1);
+    };
 
+    els.pauseBtn.onclick = () => {
+        fadeVolume(audio, 0, 250);
+        // Pause after fade completes (Bug 17 fix: no feedback loop)
+        setTimeout(() => {
+            audio.pause();
+        }, 260);
+    };
 
+    // Bug 17 fix: audio state UI sync WITHOUT calling fadeVolume (avoids feedback loop)
+    audio.onplay = () => {
+        els.playBtn.style.display = "none";
+        els.pauseBtn.style.display = "inline-flex";
+    };
 
-// play pause func
+    audio.onpause = () => {
+        els.playBtn.style.display = "inline-flex";
+        els.pauseBtn.style.display = "none";
+    };
 
-
-
-const playButton = document.getElementById("play");
-const pauseButton = document.getElementById("pause");
-
-const progressBar = document.getElementById("progress-bar");
-const seekBar = document.getElementById("seek");
-
-const totalDuration = document.getElementById("duration");
-const currentTimeEl = document.getElementById("current-time");
-
-/* =========================
-   FADE CONTROL (SAFE)
-========================= */
-let fadeInterval = null;
-
-function fadeVolume(targetVolume, duration = 250) {
-    if (!audio) return;
-
-    if (fadeInterval) clearInterval(fadeInterval);
-
-    const steps = 20;
-    const stepTime = duration / steps;
-    let currentVolume = audio.volume;
-    const step = (targetVolume - currentVolume) / steps;
-
-    fadeInterval = setInterval(() => {
-        currentVolume += step;
-        audio.volume = Math.min(Math.max(currentVolume, 0), 1);
-
-        if (
-            (step > 0 && audio.volume >= targetVolume) ||
-            (step < 0 && audio.volume <= targetVolume)
-        ) {
-            clearInterval(fadeInterval);
-            fadeInterval = null;
-            audio.volume = targetVolume;
-
-            if (targetVolume === 0) audio.pause();
+    // Seek bar
+    els.seekBar.oninput = () => {
+        if (!isNaN(audio.duration)) {
+            audio.currentTime = (els.seekBar.value / 100) * audio.duration;
         }
-    }, stepTime);
+    };
+
+    els.seekBar.onchange = () => {
+        if (!audio.paused) audio.play();
+    };
+
+    // Song ended → auto next
+    audio.onended = () => {
+        snapNext();
+    };
+
+    // Time update + progress
+    audio.ontimeupdate = () => {
+        if (!audio.duration) return;
+
+        const currentMins = Math.floor(audio.currentTime / 60);
+        const currentSecs = Math.floor(audio.currentTime % 60);
+        els.currentTimeEl.textContent =
+            `${currentMins}:${currentSecs < 10 ? "0" : ""}${currentSecs}`;
+
+        const progress = audio.currentTime / audio.duration;
+        els.progressBar.style.width = `${progress * 100}%`;
+        els.seekBar.value = progress * 100;
+
+        // Update media session position state
+        updatePositionState();
+    };
+
+    // Next / Previous buttons
+    els.nextBtn.onclick = snapNext;
+    els.prevBtn.onclick = snapPrevious;
 }
 
-/* =========================
-   BUTTON ACTIONS
-========================= */
-playButton.addEventListener("click", () => {
-    audio.volume = 0;
-    audio.play();
-    fadeVolume(1);
-});
-
-pauseButton.addEventListener("click", () => {
-    fadeVolume(0);
-});
-
-
-/* =========================
-   AUDIO STATE - UI SYNC
-   (LOCKSCREEN / NOTIFICATION SAFE)
-========================= */
-audio.addEventListener("play", () => {
-    playButton.style.display = "none";
-    pauseButton.style.display = "inline-flex";
-    fadeVolume(1);
-});
-
-audio.addEventListener("pause", () => {
-    playButton.style.display = "inline-flex";
-    pauseButton.style.display = "none";
-    fadeVolume(0);
-});
-
-/* =========================
-   SEEK BAR (MOBILE SAFE)
-========================= */
-seekBar.addEventListener("input", () => {
-    if (!isNaN(audio.duration)) {
-        audio.currentTime = (seekBar.value / 100) * audio.duration;
-    }
-});
-
-seekBar.addEventListener("change", () => {
-    if (!audio.paused) audio.play();
-});
-audio.addEventListener("ended", () => {
-    snapNext();
-});
-
-/* =========================
-   METADATA LOADED
-========================= */
-audio.addEventListener("loadedmetadata", () => {
-    const mins = Math.floor(audio.duration / 60);
-    const secs = Math.floor(audio.duration % 60);
-    totalDuration.textContent = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-});
-
-/* =========================
-   TIME UPDATE + PROGRESS
-========================= */
-audio.addEventListener("timeupdate", () => {
-    if (!audio.duration) return;
-
-    const currentMins = Math.floor(audio.currentTime / 60);
-    const currentSecs = Math.floor(audio.currentTime % 60);
-    currentTimeEl.textContent =
-        `${currentMins}:${currentSecs < 10 ? "0" : ""}${currentSecs}`;
-
-    const progress = audio.currentTime / audio.duration;
-    progressBar.style.width = `${progress * 100}%`;
-    seekBar.value = progress * 100;
-});
-document.getElementById("next").addEventListener("click", snapNext);
-document.getElementById("previous").addEventListener("click", snapPrevious);
+// Initialize: bind events to the first active card
+rebindActiveCardEvents();
