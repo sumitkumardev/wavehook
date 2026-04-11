@@ -12,6 +12,7 @@ const TRANSITION_MS = 400;
 const CROSSFADE_MS = 250;   // simultaneous fade duration
 const MAX_SLIDES = 20;      // memory cap
 const MAX_RETRY = 3;
+const PREFETCH_AHEAD = 2;   // keep 2 slides ready ahead
 
 /* ===== CAROUSEL STATE ===== */
 const carousel = document.getElementById("carousel");
@@ -463,6 +464,7 @@ function navigateTo(newIndex) {
 
     setTimeout(() => {
         isTransitioning = false;
+        prefetchAhead();  // keep buffer full after each navigation
     }, TRANSITION_MS + 30);
 
     return true;
@@ -482,6 +484,46 @@ function cleanupOldSlides() {
         removed.el.remove();
         currentSlideIndex--;
     }
+}
+
+
+// =============================================
+//  PREFETCH — keep PREFETCH_AHEAD slides ready
+//  Fetches songs in background so next swipe is instant
+// =============================================
+
+let isPrefetching = false;
+
+async function prefetchAhead() {
+    if (isPrefetching) return;
+
+    const ahead = slides.length - 1 - currentSlideIndex;
+    const needed = PREFETCH_AHEAD - ahead;
+    if (needed <= 0) return;
+
+    isPrefetching = true;
+    const lang = getBestLanguage() || "";
+
+    for (let i = 0; i < needed; i++) {
+        try {
+            const res = await fetch(`/next_song?action=liked&preferred_lang=${lang}`);
+            if (!res.ok) break;
+            const song = await res.json();
+
+            // Create slide silently (positioned off-screen)
+            const slide = createSlide(song);
+            slides.push(slide);
+            cleanupOldSlides();
+
+            markInCache(song.id);
+            pushHistory(song.id);
+        } catch (err) {
+            console.error("Prefetch failed:", err);
+            break;
+        }
+    }
+
+    isPrefetching = false;
 }
 
 
@@ -554,6 +596,7 @@ function finishSnapNext(song, action) {
     // Navigate to new slide
     isTransitioning = false;
     navigateTo(slides.length - 1);
+    // navigateTo triggers prefetchAhead via its setTimeout
 }
 
 
@@ -621,6 +664,9 @@ async function loadFirstSong() {
         }, { once: true });
 
         startTime = Date.now();
+
+        // Prefetch next 2 songs in background
+        prefetchAhead();
 
     } catch (err) {
         console.error("Failed to load first song:", err);
