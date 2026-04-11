@@ -36,80 +36,29 @@ body {
     position: relative;
 }
 
-/* ===== DUAL-CARD SYSTEM ===== */
+/* ===== CAROUSEL SYSTEM ===== */
 
-.song-card {
+#carousel {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.slide {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100vh;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    position: absolute;
-    top: 0;
-    left: 0;
-    will-change: transform, opacity;
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
 }
 
-/* Active card: visible, on-screen */
-.song-card.active-card {
-    transform: translateY(0);
-    opacity: 1;
-    z-index: 2;
-    pointer-events: auto;
-}
-
-/* Incoming card: hidden below screen */
-.song-card.incoming-card {
-    transform: translateY(100%);
-    opacity: 0;
-    z-index: 1;
-    pointer-events: none;
-}
-
-/* ===== TRANSITION CLASSES ===== */
-
-/* Active card sliding OUT upward */
-.song-card.slide-exit-up {
-    transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.35s ease;
-    transform: translateY(-100%);
-    opacity: 0;
-    z-index: 2;
-    pointer-events: none;
-}
-
-/* Incoming card sliding IN from below */
-.song-card.slide-enter-up {
-    transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.3s ease;
-    transform: translateY(0);
-    opacity: 1;
-    z-index: 3;
-    pointer-events: auto;
-}
-
-/* Active card sliding OUT downward (for previous) */
-.song-card.slide-exit-down {
-    transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.35s ease;
-    transform: translateY(100%);
-    opacity: 0;
-    z-index: 2;
-    pointer-events: none;
-}
-
-/* Incoming card sliding IN from above (for previous) */
-.song-card.slide-enter-down {
-    transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1),
-                opacity 0.3s ease;
-    transform: translateY(0);
-    opacity: 1;
-    z-index: 3;
-    pointer-events: auto;
-}
-
-/* Swipe drag state: no transition, follow finger */
-.song-card.dragging {
+.slide.no-transition {
     transition: none !important;
 }
 
