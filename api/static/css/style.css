@@ -53,7 +53,7 @@ header {
 .left {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 10px;
     padding: 8px;
     border-radius: 50px;
     /* background: rgb(255, 255, 255, 10%); */
@@ -64,7 +64,7 @@ header {
 }
 
 h1 {
-    font-size: 18px;
+    font-size: 25px;
     font-family: 'Pencerio', cursive;
 }
 
@@ -192,6 +192,10 @@ svg {
     width: 24px;
     height: 24px;
     fill: #fefefe;
+}
+
+.left svg {
+    border-radius: 50px;
 }
 
 .cls-3 {
