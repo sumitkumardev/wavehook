@@ -564,3 +564,37 @@ def next_song():
 
 
     return jsonify(song)
+
+
+@app.route("/report_action")
+def report_action():
+    """Lightweight taste-feedback endpoint.
+
+    Called fire-and-forget when the user swipes to an already-prefetched
+    slide.  Updates the taste vector / skip count without returning a song.
+    """
+    action = request.args.get("action")
+    song_id = request.args.get("song_id")
+    preferred_lang = sanitize_language(
+        request.args.get("preferred_lang")
+    )
+
+    if not song_id and g.session.get("primary_song"):
+        song_id = g.session["primary_song"]
+
+    if not song_id:
+        return jsonify({"ok": True})
+
+    if action == "liked":
+        g.session["skip_count"] = 0
+        update_taste_vector(song_id, weight=1.0)
+    elif action == "hard_skip":
+        g.session["skip_count"] += 1
+        update_taste_vector(song_id, weight=-0.2)
+    elif action == "skipped":
+        g.session["skip_count"] += 1
+
+    # Update primary to the song the user is currently on
+    g.session["primary_song"] = song_id
+
+    return jsonify({"ok": True})

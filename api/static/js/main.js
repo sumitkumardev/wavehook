@@ -267,11 +267,6 @@ function saveLanguagePreference() {
 }
 
 function checkFirstTime() {
-    if (localStorage.getItem(SETUP_DONE_KEY)) {
-        // Already completed setup — skip panel, go straight to music
-        loadFirstSong();
-        return;
-    }
     document.getElementById("langPanel").style.display = "flex";
 }
 
@@ -619,6 +614,17 @@ async function snapNext() {
 
     // ---- Existing forward slides: instant (no network) ----
     if (currentSlideIndex < slides.length - 1) {
+        // Report the user's real action to the backend (fire-and-forget)
+        // so the taste vector stays accurate even though the slide was prefetched.
+        const action = decideAction();
+        const lang = getBestLanguage() || "";
+        const currentSongId = slides[currentSlideIndex]?.songId || "";
+        fetch(`/report_action?action=${action}&song_id=${currentSongId}&preferred_lang=${lang}`)
+            .catch(() => {});
+
+        if (action === "liked") updateLangScore(slides[currentSlideIndex]?.song?.language || "unknown", +1);
+        if (action === "skipped" || action === "hard_skip") updateLangScore(slides[currentSlideIndex]?.song?.language || "unknown", -1);
+
         navigateTo(currentSlideIndex + 1);
         return;
     }
