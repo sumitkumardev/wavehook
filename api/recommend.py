@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 from pymongo import MongoClient
 
@@ -18,17 +19,22 @@ VECTORS = None
 SONG_IDS = None
 NORMS = None
 SONG_ID_INDEX = None  # song_id → index lookup (O(1))
-LANGUAGES = None      # NEW: language cache
+LANGUAGES = None      # language cache
+
+_vectors_loaded_at = 0
+VECTOR_CACHE_TTL = 60 * 60  # 1 hour — auto-refresh picks up new songs
 
 
 # -----------------------------
-# Load vectors ONCE
+# Load vectors ONCE (with TTL refresh)
 # -----------------------------
 def load_song_vectors():
-    global VECTORS, SONG_IDS, NORMS, SONG_ID_INDEX, LANGUAGES
+    global VECTORS, SONG_IDS, NORMS, SONG_ID_INDEX, LANGUAGES, _vectors_loaded_at
 
-    # already loaded → reuse
-    if VECTORS is not None:
+    now = time.time()
+
+    # already loaded and still fresh → reuse
+    if VECTORS is not None and (now - _vectors_loaded_at) < VECTOR_CACHE_TTL:
         return VECTORS, SONG_IDS, NORMS, LANGUAGES
 
     vectors = []
@@ -66,6 +72,8 @@ def load_song_vectors():
     # Perf: build O(1) lookup dict
     SONG_ID_INDEX = {sid: i for i, sid in enumerate(song_ids)}
 
+    _vectors_loaded_at = now
+
     print(f"[recommend] Loaded {len(SONG_IDS)} vectors into RAM")
 
     return VECTORS, SONG_IDS, NORMS, LANGUAGES
@@ -82,7 +90,10 @@ def cosine_similarity_fast(vectors, norms, query_vector):
     if q_norm == 0:
         return None
 
-    return np.dot(vectors, q) / (norms * q_norm)
+    # Guard against zero-norm vectors to prevent Inf/NaN
+    safe_norms = np.maximum(norms, 1e-10)
+
+    return np.dot(vectors, q) / (safe_norms * q_norm)
 
 
 # -----------------------------
@@ -141,10 +152,11 @@ def recommend(song_id, k=5, language=None):
 # -----------------------------
 def refresh_vectors():
 
-    global VECTORS, SONG_IDS, NORMS, SONG_ID_INDEX, LANGUAGES
+    global VECTORS, SONG_IDS, NORMS, SONG_ID_INDEX, LANGUAGES, _vectors_loaded_at
 
     VECTORS = None
     SONG_IDS = None
     NORMS = None
     SONG_ID_INDEX = None
     LANGUAGES = None
+    _vectors_loaded_at = 0

@@ -8,6 +8,7 @@
 const CACHE_KEY = "played_songs_cache";
 const LANG_KEY = "language_score";
 const HISTORY_KEY = "played_history";
+const SETUP_DONE_KEY = "wavehook_setup_done";
 const TRANSITION_MS = 400;
 const CROSSFADE_MS = 250;   // simultaneous fade duration
 const MAX_SLIDES = 20;      // memory cap
@@ -24,6 +25,39 @@ let isTransitioning = false;
 let startTime = 0;
 let offsetY = 0;
 let startY = 0;
+
+
+// =============================================
+//  LOADING INDICATOR (injected dynamically)
+// =============================================
+
+const _loaderStyle = document.createElement("style");
+_loaderStyle.textContent = `
+@keyframes wh-loader-spin { to { transform: rotate(360deg); } }
+#loading-indicator {
+    display: none;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    pointer-events: none;
+}
+#loading-indicator .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid rgba(255,255,255,0.15);
+    border-top-color: rgba(255,255,255,0.8);
+    border-radius: 50%;
+    animation: wh-loader-spin 0.7s linear infinite;
+}`;
+document.head.appendChild(_loaderStyle);
+
+const _loader = document.createElement("div");
+_loader.id = "loading-indicator";
+_loader.innerHTML = '<div class="spinner"></div>';
+document.body.appendChild(_loader);
+
+function showLoader() { _loader.style.display = "flex"; }
+function hideLoader() { _loader.style.display = "none"; }
 
 
 // =============================================
@@ -63,6 +97,27 @@ function applyMarqueeToTitle(titleEl, text) {
       <span class="marquee-item">${repeated}</span>
     </span>`;
     titleEl.classList.add("animate");
+}
+
+
+// =============================================
+//  SAFE DATA ACCESS HELPERS
+// =============================================
+
+function getSafeCoverUrl(song) {
+    return song.image?.[2]?.url
+        || song.image?.[1]?.url
+        || song.image?.[0]?.url
+        || '';
+}
+
+function getSafeAudioUrl(song) {
+    return song.downloadUrl?.[4]?.url
+        || song.downloadUrl?.[3]?.url
+        || song.downloadUrl?.[2]?.url
+        || song.downloadUrl?.[1]?.url
+        || song.downloadUrl?.[0]?.url
+        || '';
 }
 
 
@@ -142,13 +197,15 @@ function setPremiumGradient(img) {
 function updateMediaSession(song) {
     if (!("mediaSession" in navigator)) return;
 
+    const artworkUrl = getSafeCoverUrl(song);
+
     navigator.mediaSession.metadata = new MediaMetadata({
         title: decodeHTMLEntities(song.name),
         artist: song.language || "WaveHook",
         album: "WaveHook",
-        artwork: [
-            { src: song.image[2].url, sizes: "256x256", type: "image/png" }
-        ]
+        artwork: artworkUrl
+            ? [{ src: artworkUrl, sizes: "256x256", type: "image/png" }]
+            : []
     });
 
     navigator.mediaSession.setActionHandler("play", () => {
@@ -204,23 +261,39 @@ function saveLanguagePreference() {
         saveLangScore(scores);
     }
 
+    localStorage.setItem(SETUP_DONE_KEY, "1");
     document.getElementById("langPanel").style.display = "none";
     loadFirstSong();
 }
 
 function checkFirstTime() {
+    if (localStorage.getItem(SETUP_DONE_KEY)) {
+        // Already completed setup — skip panel, go straight to music
+        loadFirstSong();
+        return;
+    }
     document.getElementById("langPanel").style.display = "flex";
 }
 
 
 // =============================================
 //  CACHE & HISTORY
+//  In-memory Set mirrors localStorage for O(1) lookups
+//  without repeated JSON.parse on every check.
 // =============================================
 
-function getCache() { return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); }
-function saveCache(c) { localStorage.setItem(CACHE_KEY, JSON.stringify(c)); }
-function isInCache(id) { return id in getCache(); }
-function markInCache(id) { const c = getCache(); c[id] = Date.now(); saveCache(c); }
+const _cacheSet = new Set(
+    Object.keys(JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"))
+);
+
+function isInCache(id) { return _cacheSet.has(id); }
+
+function markInCache(id) {
+    _cacheSet.add(id);
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+    c[id] = Date.now();
+    localStorage.setItem(CACHE_KEY, JSON.stringify(c));
+}
 
 function getHistory() { return JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]"); }
 function saveHistory(arr) { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); }
@@ -256,7 +329,7 @@ function createSlide(song) {
     const prevBtn = el.querySelector(".prev-btn");
     const hookBtn = el.querySelector(".button-hook");
 
-    // --- Populate ---
+    // --- Populate (with null-safe access) ---
     applyMarqueeToTitle(titleEl, decodeHTMLEntities(song.name));
 
     const artists = song.artists?.primary?.map(a => decodeHTMLEntities(a.name)) || [];
@@ -265,10 +338,10 @@ function createSlide(song) {
             ? artists.slice(0, 2).join(", ") + " & more"
             : artists.join(", ") || "Unknown Artist";
 
-    cover.src = song.image[2].url;
+    cover.src = getSafeCoverUrl(song);
 
     // --- Audio: preload so crossfade is instant ---
-    audio.src = song.downloadUrl[4].url;
+    audio.src = getSafeAudioUrl(song);
 
     const slideHooks = extractHooks(song);
     let hookIndex = 0;
@@ -489,7 +562,8 @@ function cleanupOldSlides() {
 
 // =============================================
 //  PREFETCH — keep PREFETCH_AHEAD slides ready
-//  Fetches songs in background so next swipe is instant
+//  Uses action=prefetch so the backend does NOT
+//  modify the user's taste vector for unseen songs.
 // =============================================
 
 let isPrefetching = false;
@@ -506,7 +580,7 @@ async function prefetchAhead() {
 
     for (let i = 0; i < needed; i++) {
         try {
-            const res = await fetch(`/next_song?action=liked&preferred_lang=${lang}`);
+            const res = await fetch(`/next_song?action=prefetch&preferred_lang=${lang}`);
             if (!res.ok) break;
             const song = await res.json();
 
@@ -529,6 +603,8 @@ async function prefetchAhead() {
 
 // =============================================
 //  SNAP NEXT
+//  Uses try/finally to guarantee isTransitioning
+//  always resets even on network errors or retries.
 // =============================================
 
 function decideAction() {
@@ -551,34 +627,41 @@ async function snapNext() {
     isTransitioning = true;
     const action = decideAction();
     const lang = getBestLanguage() || "";
+    let navigated = false;
 
     try {
+        showLoader();
+
         const res = await fetch(`/next_song?action=${action}&preferred_lang=${lang}`);
-        if (!res.ok) { isTransitioning = false; return; }
+        if (!res.ok) return;
         const song = await res.json();
+
+        let finalSong = song;
 
         // Skip already-cached songs (with retry limit)
         if (isInCache(song.id)) {
             console.warn("Cached song, retrying...");
-            isTransitioning = false;
-            // Retry up to MAX_RETRY times
             for (let i = 0; i < MAX_RETRY; i++) {
                 const r2 = await fetch(`/next_song?action=skipped&preferred_lang=${lang}`);
-                if (!r2.ok) return;
+                if (!r2.ok) break;
                 const s2 = await r2.json();
                 if (!isInCache(s2.id)) {
-                    return finishSnapNext(s2, action);
+                    finalSong = s2;
+                    break;
                 }
             }
-            // Give up, play it anyway
-            return finishSnapNext(song, action);
         }
 
-        finishSnapNext(song, action);
+        finishSnapNext(finalSong, action);
+        navigated = true;
 
     } catch (err) {
         console.error("Failed to load next song:", err);
-        isTransitioning = false;
+    } finally {
+        hideLoader();
+        if (!navigated) {
+            isTransitioning = false;
+        }
     }
 }
 
@@ -720,17 +803,17 @@ document.addEventListener("wheel", (() => {
     };
 })());
 
-// --- TOUCH ---
+// --- TOUCH (passive listeners for scroll performance) ---
 document.addEventListener("touchstart", e => {
     if (isTransitioning) return;
     startY = e.touches[0].clientY;
-});
+}, { passive: true });
 
 document.addEventListener("touchmove", e => {
     if (isTransitioning) return;
     offsetY = e.touches[0].clientY - startY;
     positionSlidesDrag(offsetY);
-});
+}, { passive: true });
 
 document.addEventListener("touchend", () => {
     if (isTransitioning) return;
@@ -752,7 +835,7 @@ document.addEventListener("touchend", () => {
         offsetY = 0;
         snapBackSlides();
     }
-});
+}, { passive: true });
 
 
 // =============================================
