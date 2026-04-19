@@ -1,11 +1,14 @@
 from flask import Flask, jsonify, request, render_template, g
 from pymongo import MongoClient
+from collections import deque
 import random, time, uuid, os
 import numpy as np
 
 from . import recommend as rec_module
 from .recommend import (
     recommend,
+    recommend_stochastic,
+    taste_recommend_stochastic,
     load_song_vectors,
     cosine_similarity_fast
 )
@@ -54,6 +57,7 @@ def load_session():
             "skip_count": 0,
             "taste_vector": None,
             "taste_weight": 0.0,
+            "recent_vectors": deque(maxlen=10),
         }
         SESSIONS[sid] = g.session
         g.session_id = sid
@@ -120,9 +124,28 @@ def is_recently_played(song_id):
 def mark_played(song_id):
 
     g.session["played_cache"][song_id] = time.time()
+    _track_recent_vector(song_id)
+
+
+def _track_recent_vector(song_id):
+    """Push the song's embedding onto the recent_vectors deque for diversity tracking."""
+    if not song_id:
+        return
+
+    vectors, song_ids, _, _ = load_song_vectors()
+    idx_map = rec_module.SONG_ID_INDEX
+
+    if idx_map is None or song_id not in idx_map:
+        return
+
+    vec = vectors[idx_map[song_id]].tolist()  # store as plain list in deque
+    g.session["recent_vectors"].append(vec)
 
 
 # ---------------- Taste Vectors ---------------
+
+TASTE_DECAY = 0.85  # Recent likes weigh ~6× more than likes from 10 songs ago
+
 
 def update_taste_vector(song_id, weight=1.0):
 
@@ -147,23 +170,20 @@ def update_taste_vector(song_id, weight=1.0):
         g.session["taste_weight"] = weight
         return
 
+    # Exponential recency decay: reduce influence of older interactions
+    decayed_weight = g.session["taste_weight"] * TASTE_DECAY
 
-    new_weight = g.session["taste_weight"] + weight
+    new_weight = decayed_weight + weight
 
     if new_weight <= 0:
         g.session["taste_weight"] = 0.0
         g.session["taste_vector"] = None  # Reset vector when weight drops to zero
         return
 
-
     g.session["taste_vector"] = (
-
-        g.session["taste_vector"] * g.session["taste_weight"]
-
+        g.session["taste_vector"] * decayed_weight
         + vec * weight
-
     ) / new_weight
-
 
     g.session["taste_vector"] = np.nan_to_num(
         g.session["taste_vector"]
@@ -230,7 +250,11 @@ def get_recommended_from_primary(primary_id, language=None):
         return None
 
 
-    for r in rec["recommended"]:
+    # Shuffle to break deterministic ordering across sessions
+    candidates = list(rec["recommended"])
+    random.shuffle(candidates)
+
+    for r in candidates:
 
         sid = r["song_id"]
 
@@ -261,35 +285,37 @@ def get_recommended_from_primary(primary_id, language=None):
 
 def get_vector_recommendation(song_id, language=None):
 
-    try:
+    excluded = set(g.session["played_cache"].keys())
+    recent_vecs = list(g.session.get("recent_vectors", []))
 
-        recs = recommend(
+    try:
+        recs = recommend_stochastic(
             song_id,
             k=5,
-            language=language
+            language=language,
+            excluded_ids=excluded,
+            recent_vectors=recent_vecs,
+            temperature=0.35
         )
-
     except Exception:
-
         return None
 
+    if not recs:
+        return None
 
-    for r in recs:
-
-        sid = r["song_id"]
-
-        if is_recently_played(sid):
-            continue
-
-
-        song = songs_col.find_one(
-            {"id": sid},
+    # Batch DB lookup
+    candidate_ids = [r["song_id"] for r in recs]
+    results = {
+        doc["id"]: doc
+        for doc in songs_col.find(
+            {"id": {"$in": candidate_ids}},
             SONG_PROJECTION
         )
+    }
 
-        if song:
-            return song
-
+    for sid in candidate_ids:
+        if sid in results:
+            return results[sid]
 
     return None
 
@@ -297,84 +323,48 @@ def get_vector_recommendation(song_id, language=None):
 
 # -------------- recommend from taste vector (batched) ------------
 
-def recommend_from_taste(language=None):
+def recommend_from_taste(language=None, temperature=0.35):
 
     tv = g.session.get("taste_vector")
 
     if tv is None:
         return None
 
+    excluded = set(g.session["played_cache"].keys())
+    if g.session["primary_song"]:
+        excluded.add(g.session["primary_song"])
 
-    vectors, song_ids, norms, langs = load_song_vectors()
+    recent_vecs = list(g.session.get("recent_vectors", []))
 
-    sims = cosine_similarity_fast(
-        vectors,
-        norms,
-        tv
-    )
-
-
-    if sims is None:
+    try:
+        recs = taste_recommend_stochastic(
+            tv,
+            k=5,
+            language=language,
+            excluded_ids=excluded,
+            recent_vectors=recent_vecs,
+            temperature=temperature
+        )
+    except Exception:
         return None
 
-
-    # fast partial sorting
-    n_candidates = min(50, len(sims))
-
-    top_idx = np.argpartition(
-        sims,
-        -n_candidates
-    )[-n_candidates:]
-
-
-    top_idx = top_idx[
-        np.argsort(
-            sims[top_idx]
-        )[::-1]
-    ]
-
-
-    # Collect candidate IDs (pre-filter before DB)
-    candidates = []
-
-    for i in top_idx:
-
-        sid = song_ids[i]
-
-        if sid == g.session["primary_song"]:
-            continue
-
-        if is_recently_played(sid):
-            continue
-
-        # language filter BEFORE DB call
-        if language and langs[i] != language:
-            continue
-
-        candidates.append(sid)
-
-        if len(candidates) >= 10:
-            break
-
-
-    if not candidates:
+    if not recs:
         return None
 
-
-    # Single batch DB query instead of N individual queries
+    # Single batch DB query
+    candidate_ids = [r["song_id"] for r in recs]
     results = {
         doc["id"]: doc
         for doc in songs_col.find(
-            {"id": {"$in": candidates}},
+            {"id": {"$in": candidate_ids}},
             SONG_PROJECTION
         )
     }
 
     # Return first match in priority order
-    for sid in candidates:
+    for sid in candidate_ids:
         if sid in results:
             return results[sid]
-
 
     return None
 
@@ -476,7 +466,8 @@ def next_song():
     elif action == "prefetch":
 
         # Neutral fetch — no taste vector modification
-        song = recommend_from_taste(preferred_lang)
+        # Warmer temperature (0.5) for more diversity in the prefetch buffer
+        song = recommend_from_taste(preferred_lang, temperature=0.5)
 
         if not song:
             song = get_recommended_from_primary(
