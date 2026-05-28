@@ -620,7 +620,7 @@ async function snapNext() {
         const lang = getBestLanguage() || "";
         const currentSongId = slides[currentSlideIndex]?.songId || "";
         fetch(`/report_action?action=${action}&song_id=${currentSongId}&preferred_lang=${lang}`)
-            .catch(() => {});
+            .catch(() => { });
 
         if (action === "liked") updateLangScore(slides[currentSlideIndex]?.song?.language || "unknown", +1);
         if (action === "skipped" || action === "hard_skip") updateLangScore(slides[currentSlideIndex]?.song?.language || "unknown", -1);
@@ -842,10 +842,5 @@ document.addEventListener("touchend", () => {
         snapBackSlides();
     }
 }, { passive: true });
-
-
-// =============================================
-//  INIT
-// =============================================
 
 checkFirstTime();
